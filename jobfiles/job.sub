@@ -1,0 +1,21 @@
+executable = job_sweep.sh
+arguments = $(Process)
+error = joblogs/$(Process).err.txt
+output = joblogs/$(Process).out.txt
+log = joblogs/$(Process).log.txt
+request_memory = 128GB
+request_gpus=1
+requirements=TARGET.CUDACapability>=3.7
+requirements=TARGET.CUDAGlobalMemoryMb>25000
+
+# MaxTime = 50000
+# periodic_hold = (JobStatus =?= 2) && ((CurrentTime - JobCurrentStartDate) >= $(MaxTime))
+# periodic_hold_reason = "Job runtime exceeded"
+# periodic_hold_subcode = 1
+# periodic_release = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonSubCode =?= 1) )
+
++MaxRunningPrice = 1000
++RunningPriceExceededAction = "kill"
+queue 20
+
+# condor_submit_bid 80 -i -append 'request_memory=128GB' -append 'request_gpus=1' -append 'requirements=TARGET.CUDACapability>=3.7' -append 'requirements=TARGET.CUDAGlobalMemoryMb>10000'
