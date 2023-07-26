@@ -7,6 +7,7 @@ parameters:
     values: 
     - 512
     - 1024
+    - 2048
   PMA_num_heads:
     values: 
     - 1
@@ -34,7 +35,7 @@ parameters:
   experiment_group:
     value: Classifier_Embedder
   experiment_name:
-    value: Hinge_loss_1
+    value: Hinge_loss_overfit
   lr:
     distribution: log_uniform_values 
     max: 1.0e-3
@@ -61,18 +62,18 @@ parameters:
   seed:
     value: 0
   val_size:
-    value: 5000
+    value: 1000
   gen_size:
-    value: 1000000
+    value: 10000
   validate_every_n_updates:
-    value: 16
+    value: 100
   weight_decay:
     values: 
     - 0.0
     - 0.00001
     - 0.0001
   early_stopping:
-    value: True
+    value: False
   patience:
     value: 10000
   hdf5_dataset:

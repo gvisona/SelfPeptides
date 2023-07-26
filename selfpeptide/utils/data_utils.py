@@ -144,12 +144,14 @@ class PeptideDataset_forMining(Dataset):
 class Self_NonSelf_PeptideDataset(Dataset):
     def __init__(self, hdf5_dataset_fname, gen_size=1000, 
                  val_size=0,
-                 negative_label=-1):
+                 negative_label=-1, test_run=False):
         self.hdf5_dataset_fname = hdf5_dataset_fname
         self.gen_size = gen_size
         self.val_size = val_size//2
         self.negative_label = negative_label        
-
+        self.test_run = test_run
+        
+        
         if not os.path.exists(self.hdf5_dataset_fname):
             raise FileNotFoundError("Specify a valid HDF5 file for the dataset")
         self._get_n_peptides()
@@ -188,7 +190,12 @@ class Self_NonSelf_PeptideDataset(Dataset):
             self.idx_self = self.val_size
         if self.n_nonself_peptides-self.idx_nonself<self.gen_size:
             self.idx_nonself = self.val_size
-        self._load_peptides(self.gen_size)
+            
+        if self.test_run:
+            self.idx_self = self.val_size
+            self.idx_nonself = self.val_size
+        else:
+            self._load_peptides(self.gen_size)
     
     def __len__(self):
         return len(self.peptides)
