@@ -224,7 +224,7 @@ def train(config=None, init_wandb=True):
                 # pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
 
                 
-                k_median_classification_metrics = eval_classification_metrics(val_labels, pred_median_classes, 
+                k_median_classification_metrics = eval_classification_metrics(val_labels.detach().cpu(), pred_median_classes.detach().cpu(), 
                                                                      is_logit=False, 
                                                                      threshold=0.5)
                 k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
