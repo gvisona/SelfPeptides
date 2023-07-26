@@ -56,6 +56,8 @@ parameters:
     value: 0
   val_size:
     value: 1000
+  ref_size:
+    value: 1000
   gen_size:
     value: 10000
   validate_every_n_updates:
