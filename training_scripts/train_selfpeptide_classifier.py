@@ -61,7 +61,7 @@ def train(config=None, init_wandb=True):
     
     val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"])
     train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], 
-                                             val_size=config["val_size"], test_run=True)
+                                             val_size=config["val_size"], test_run=config["test_run"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
     val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
@@ -246,6 +246,7 @@ if __name__=="__main__":
     parser.add_argument("--gen_size", type=int, default=10000)
     
     parser.add_argument("--early_stopping", type=bool, default=False)
+    parser.add_argument("--test_run", action="store_true", default=True)
     
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)

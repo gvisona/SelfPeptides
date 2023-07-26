@@ -7,5 +7,6 @@ module load cuda/11.7
 
 
 
-python3 /home/gvisona/SelfPeptides/hyperparameter_sweeps/Classifier_sweep.py  \
+# python3 /home/gvisona/SelfPeptides/hyperparameter_sweeps/Classifier_sweep.py  \
+python3 /home/gvisona/SelfPeptides/hyperparameter_sweeps/Embedder_sweep.py  \
 --seed $1 \

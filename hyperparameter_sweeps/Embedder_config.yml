@@ -1,0 +1,72 @@
+method: random
+metric:
+  goal: minimize
+  name: train/hinge_loss
+parameters:
+  embedding_dim:
+    value: 512
+  PMA_num_heads:
+    values: 
+    - 1
+    - 2
+  PMA_ln:
+    value: True
+  num_heads:
+    values: 
+    - 4
+    - 8
+  transf_hidden_dim:
+    value: 1024
+  n_attention_layers:
+    values: 
+    - 2
+    - 4
+    - 8
+  accumulate_batches:
+    value: 32
+  batch_size:
+    value: 16
+  cool_down:
+    value: 0.8
+  experiment_group:
+    value: SP_Embedder
+  experiment_name:
+    value: Embeddings_hinge_loss_overfit
+  lr:
+    distribution: log_uniform_values 
+    max: 5.0e-3
+    min: 1e-5
+  momentum:
+    values: 
+    - 0.9
+    - 0.99
+  nesterov_momentum:
+    value: True
+  max_updates:
+    value: 100000
+  min_frac:
+    value: 0.1
+  dropout_p:
+    value: 0.0 
+  project_folder:
+    value: /fast/gvisona/SelfPeptides
+  ramp_up:
+    value: 0.1
+  seed:
+    value: 0
+  val_size:
+    value: 1000
+  gen_size:
+    value: 10000
+  validate_every_n_updates:
+    value: 100
+  weight_decay:
+    value: 0.0
+  early_stopping:
+    value: False
+  patience:
+    value: 10000
+  hdf5_dataset:
+    value: "/home/gvisona/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5"
+  test_run:
+    value: True
