@@ -35,7 +35,7 @@ parameters:
   experiment_group:
     value: Classifier_Embedder
   experiment_name:
-    value: Hinge_loss_overfit
+    value: Hinge_loss_overfit_noreg
   lr:
     distribution: log_uniform_values 
     max: 1.0e-3
@@ -51,10 +51,7 @@ parameters:
   min_frac:
     value: 0.1
   dropout_p:
-    values: 
-    - 0.0
-    - 0.05
-    - 0.1
+    value: 0.0 
   project_folder:
     value: /fast/gvisona/SelfPeptides
   ramp_up:
@@ -68,10 +65,7 @@ parameters:
   validate_every_n_updates:
     value: 100
   weight_decay:
-    values: 
-    - 0.0
-    - 0.00001
-    - 0.0001
+    value: 0.0
   early_stopping:
     value: False
   patience:

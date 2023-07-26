@@ -21,9 +21,7 @@ from selfpeptide.utils.data_utils import PeptideTripletsDataset, Self_NonSelf_Pe
 from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics
 from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder
 
-def get_all_embeddings(dataset, model):
-    tester = testers.BaseTester()
-    return tester.get_all_embeddings(dataset, model)
+
 
 
 def train(config=None, init_wandb=True):
