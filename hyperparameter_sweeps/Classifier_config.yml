@@ -1,12 +1,16 @@
-method: grid
+method: random
 metric:
   goal: minimize
   name: best_val_loss
 parameters:
   embedding_dim:
-    value: 512
+    values: 
+    - 512
+    - 1024
   PMA_num_heads:
-    value: 2
+    values: 
+    - 1
+    - 2
   PMA_ln:
     value: True
   num_heads:
@@ -20,6 +24,7 @@ parameters:
     - 2
     - 4
     - 8
+    - 16
   accumulate_batches:
     value: 32
   batch_size:
@@ -29,11 +34,11 @@ parameters:
   experiment_group:
     value: Classifier_Embedder
   experiment_name:
-    value: Test_BCE_Training
+    value: Hinge_loss_1
   lr:
     distribution: log_uniform_values 
     max: 1.0e-3
-    min: 1e-6
+    min: 1e-7
   momentum:
     values: 
     - 0.9
@@ -41,7 +46,7 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    value: 10000
+    value: 100000
   min_frac:
     value: 0.1
   dropout_p:
@@ -58,7 +63,7 @@ parameters:
   val_size:
     value: 5000
   gen_size:
-    value: 100000
+    value: 1000000
   validate_every_n_updates:
     value: 16
   weight_decay:
@@ -69,6 +74,6 @@ parameters:
   early_stopping:
     value: True
   patience:
-    value: 1000
+    value: 10000
   hdf5_dataset:
     value: "/home/gvisona/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5"
