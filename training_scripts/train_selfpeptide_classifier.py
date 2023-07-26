@@ -134,59 +134,59 @@ def train(config=None, init_wandb=True):
             optimizer.zero_grad()
             # scheduler.step()
             n_update += 1
-            # if n_update % config["validate_every_n_updates"] == 0:
-            #     perform_validation = True
+            if n_update % config["validate_every_n_updates"] == 0:
+                perform_validation = True
         
         
         if perform_validation:
             perform_validation = False
-            model.eval()
+            # model.eval()
             
-            avg_val_logs = None
-            val_predictions = []
-            val_labels = []
-            for ix, val_batch in enumerate(val_loader):
-                peptides, labels = val_batch
-                if torch.is_tensor(peptides):
-                    peptides = peptides.to(device)
-                labels = labels.to(device).float()               
-                predictions = model(peptides)
+            # avg_val_logs = None
+            # val_predictions = []
+            # val_labels = []
+            # for ix, val_batch in enumerate(val_loader):
+            #     peptides, labels = val_batch
+            #     if torch.is_tensor(peptides):
+            #         peptides = peptides.to(device)
+            #     labels = labels.to(device).float()               
+            #     predictions = model(peptides)
                 
-                val_loss = loss_function(predictions, labels.view(-1,1))
-                # val_predictions.append(predictions.detach())
-                # val_labels.append(labels.detach())
-                val_loss_logs = {"val/hinge_loss": val_loss.item()}
+            #     val_loss = loss_function(predictions, labels.view(-1,1))
+            #     # val_predictions.append(predictions.detach())
+            #     # val_labels.append(labels.detach())
+            #     val_loss_logs = {"val/hinge_loss": val_loss.item()}
                 
-                if avg_val_logs is None:
-                    avg_val_logs = val_loss_logs.copy()
-                else:
-                    for k in val_loss_logs:
-                        avg_val_logs[k] += val_loss_logs[k]
+            #     if avg_val_logs is None:
+            #         avg_val_logs = val_loss_logs.copy()
+            #     else:
+            #         for k in val_loss_logs:
+            #             avg_val_logs[k] += val_loss_logs[k]
             
             
-            # val_predictions = torch.cat(val_predictions).cpu().numpy()
-            # val_labels = torch.cat(val_labels).cpu().numpy()
-            # val_labels = (val_labels+1)/2
+            # # val_predictions = torch.cat(val_predictions).cpu().numpy()
+            # # val_labels = torch.cat(val_labels).cpu().numpy()
+            # # val_labels = (val_labels+1)/2
  
-            # val_classification_metrics = eval_classification_metrics(val_labels, val_predictions, 
-            #                                                          is_logit=False, 
-            #                                                          threshold=0.0)
-            # val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
+            # # val_classification_metrics = eval_classification_metrics(val_labels, val_predictions, 
+            # #                                                          is_logit=False, 
+            # #                                                          threshold=0.0)
+            # # val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
             
-            for k in avg_val_logs:
-                avg_val_logs[k] /= len(val_loader)
-            
-            
-            # epoch_val_metrics = val_classification_metrics["val_class/MCC"] 
-            # epoch_val_metrics = val_classification_metrics["val_class/MCC"] 
+            # for k in avg_val_logs:
+            #     avg_val_logs[k] /= len(val_loader)
             
             
-            # if epoch_val_metrics>best_val_metric:
-            #     best_val_metric = epoch_val_metrics
-            #     best_metric_iter = n_iter
-            #     torch.save(model.state_dict(), checkpoint_path)
+            # # epoch_val_metrics = val_classification_metrics["val_class/MCC"] 
+            # # epoch_val_metrics = val_classification_metrics["val_class/MCC"] 
+            
+            
+            # # if epoch_val_metrics>best_val_metric:
+            # #     best_val_metric = epoch_val_metrics
+            # #     best_metric_iter = n_iter
+            # #     torch.save(model.state_dict(), checkpoint_path)
             log_results = True       
-            model.train()
+            # model.train()
             
         if log_results:
             log_results = False
