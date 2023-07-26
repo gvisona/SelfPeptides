@@ -4,26 +4,23 @@ metric:
   name: train/hinge_loss
 parameters:
   embedding_dim:
-    value: 512
-  PMA_num_heads:
     values: 
-    - 1
-    - 2
+    - 32 
+    - 512
+  PMA_num_heads:
+    value: 1
   PMA_ln:
     value: True
   num_heads:
-    values: 
-    - 4
-    - 8
+    value: 4
   transf_hidden_dim:
     value: 1024
   n_attention_layers:
     values: 
     - 2
     - 4
-    - 8
   accumulate_batches:
-    value: 32
+    value: 16
   batch_size:
     value: 16
   cool_down:
@@ -34,7 +31,7 @@ parameters:
     value: Embeddings_hinge_loss_overfit
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-3
+    max: 5.0e-2
     min: 1e-5
   momentum:
     values: 

@@ -83,7 +83,7 @@ def train(config=None, init_wandb=True):
     
     # val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"], )
     # ref_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["ref_size"], val_size=config["val_size"])
-    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], val_size=config["val_size"]+config["ref_size"])
+    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=False, drop_last=True)
     # val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
@@ -292,12 +292,13 @@ if __name__=="__main__":
     parser.add_argument("--accumulate_batches", type=int, default=4)
     
     parser.add_argument("--val_size", type=int, default=1000)
-    parser.add_argument("--ref_size", type=int, default=5000)
-    parser.add_argument("--gen_size", type=int, default=16000)
+    parser.add_argument("--ref_size", type=int, default=1000)
+    parser.add_argument("--gen_size", type=int, default=10000)
     
     parser.add_argument("--early_stopping", type=bool, default=True)
+    parser.add_argument("--test_run", type=bool, default=True)
     
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-2)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.95)
     parser.add_argument("--nesterov_momentum", action="store_true", default=True)
@@ -307,7 +308,7 @@ if __name__=="__main__":
 
 
     parser.add_argument("--dropout_p", type=float, default=0.15)
-    parser.add_argument("--embedding_dim", type=int, default=256)
+    parser.add_argument("--embedding_dim", type=int, default=64)
     parser.add_argument("--transf_hidden_dim", type=int, default=128)
     parser.add_argument("--n_attention_layers", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)

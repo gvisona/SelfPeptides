@@ -17,7 +17,7 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     
-    sweep_id = 'm61ph2zd'
+    sweep_id = 'inldijoo'
     
     if os.path.exists("/home/gvisona/Projects/SelfPeptides"):
         project_folder = "/home/gvisona/Projects/SelfPeptides"
