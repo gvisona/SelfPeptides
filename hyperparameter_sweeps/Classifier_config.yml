@@ -71,4 +71,4 @@ parameters:
   patience:
     value: 1000
   hdf5_dataset:
-    value: "/home/gvisona/SelfPeptides/processed_data/peptide_reference_dataset.hdf5"
+    value: "/home/gvisona/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5"

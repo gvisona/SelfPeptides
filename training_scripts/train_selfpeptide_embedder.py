@@ -17,7 +17,7 @@ from pytorch_metric_learning import losses, testers
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
 
-from selfpeptide.utils.data_utils import PeptideTripletsDataset, PeptideDataset_forMining
+from selfpeptide.utils.data_utils import PeptideTripletsDataset, Self_NonSelf_PeptideDataset
 from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics
 from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder
 
@@ -59,12 +59,9 @@ def train(config=None, init_wandb=True):
     checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
 
     
-    # val_dset = PeptideTripletsDataset(config["hdf5_dataset"], gen_size=config["n_val_triplets"], init_random_state=config["seed"])
-    val_dset = PeptideDataset_forMining(config["hdf5_dataset"], gen_size=config["val_size"], init_random_state=config["seed"])
-    val_peptides = val_dset.get_stored_peptides()
-    ref_dset = PeptideDataset_forMining(config["hdf5_dataset"], gen_size=config["ref_size"], init_random_state=config["seed"], hold_out_set=val_peptides)
-    ref_peptides = ref_dset.get_stored_peptides()
-    train_dset = PeptideDataset_forMining(config["hdf5_dataset"], gen_size=config["gen_size"], hold_out_set=val_peptides.union(ref_peptides))
+    val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"], )
+    ref_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["ref_size"], val_size=config["val_size"])
+    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], val_size=config["val_size"]+config["ref_size"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=False, drop_last=True)
     val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)

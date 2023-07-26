@@ -141,82 +141,54 @@ class PeptideDataset_forMining(Dataset):
     
     
 
-
-
 class Self_NonSelf_PeptideDataset(Dataset):
     def __init__(self, hdf5_dataset_fname, gen_size=1000, 
-                 init_random_state=None, 
-                 hold_out_set=None,
+                 val_size=0,
                  negative_label=-1):
         self.hdf5_dataset_fname = hdf5_dataset_fname
         self.gen_size = gen_size
-        self.negative_label = negative_label
-        self.self_hold_out_idx_set = None
-        self.nonself_hold_out_idx_set = None
-        
-        self.idx_self_processed = set()
-        self.idx_nonself_processed = set()
-        
-        if hold_out_set is not None:
-            self.self_hold_out_idx_set, self.nonself_hold_out_idx_set = hold_out_set
-            self.idx_self_processed.update(self.self_hold_out_idx_set)
-            self.idx_nonself_processed.update(self.nonself_hold_out_idx_set)
-        
+        self.val_size = val_size//2
+        self.negative_label = negative_label        
+
         if not os.path.exists(self.hdf5_dataset_fname):
             raise FileNotFoundError("Specify a valid HDF5 file for the dataset")
         self._get_n_peptides()
-        self._generate_peptides(n_peptides=gen_size, random_state=init_random_state)
+        
+        self.idx_self = self.val_size
+        self.idx_nonself = self.val_size
+    
+        self._load_peptides(gen_size)
         
     def _get_n_peptides(self):
         with h5py.File(self.hdf5_dataset_fname, 'r') as f:
             self.n_self_peptides = len(f["reference_human_peptides"])
             self.n_nonself_peptides = len(f["nonself_peptides"])
-        
-    def get_stored_peptides(self):
-        return []
-        # return set(self.peptides)
+
                     
-    def _load_peptides(self, n_peptides=10000, random_state=None):
+    def _load_peptides(self, n_peptides):
         peptides = torch.zeros((n_peptides, MAX_PEPTIDE_LEN)).long()
         labels = torch.ones(n_peptides).long()
         
-        if random_state is not None:
-            np.random.seed(random_state)
-        
-        self_peptides_idxs = np.random.choice([i for i in range(self.n_self_peptides) 
-                                               if i not in self.idx_self_processed], 
-                                              size=n_peptides, replace=False)
-        
-        
-        
-        nonself_peptides_idxs = np.random.choice([i for i in range(self.n_nonself_peptides) 
-                                               if i not in self.idx_nonself_processed], 
-                                              size=n_peptides, replace=False) 
-        
-        
+
         with h5py.File(self.hdf5_dataset_fname, 'r') as f:
-            peptides[::2, :] = f["reference_human_peptides"][self_peptides_idxs]
-            peptides[1::2, :] = f["reference_human_peptides"][nonself_peptides_idxs]
+            peptides[::2, :] = torch.from_numpy(f["reference_human_peptides"][self.idx_self:self.idx_self+n_peptides//2])
+            peptides[1::2, :] = torch.from_numpy(f["nonself_peptides"][self.idx_nonself:self.idx_nonself+n_peptides//2])
             
         labels[1::2] = self.negative_label
         
-        self.peptides = peptides
-        self.labels = labels
+        self.peptides = peptides.long()
+        self.labels = labels.long()
         
-        self.idx_self_processed.update(self_peptides_idxs)
-        self.idx_nonself_processed.update(nonself_peptides_idxs)
+        self.idx_self += n_peptides//2
+        self.idx_nonself += n_peptides//2
         
         
     def refresh_data(self):
-        if self.n_self_peptides-len(self.idx_self_processed)<self.gen_size:
-            self.idx_self_processed = set()
-            self.idx_nonself_processed = set()
-        
-            if self.self_hold_out_idx_set is not None:
-                self.idx_self_processed.update(self.self_hold_out_idx_set)
-                self.idx_nonself_processed.update(self.nonself_hold_out_idx_set)
-        
-        self._generate_peptides(n_peptides=self.gen_size)
+        if self.n_self_peptides-self.idx_self<self.gen_size:
+            self.idx_self = self.val_size
+        if self.n_nonself_peptides-self.idx_nonself<self.gen_size:
+            self.idx_nonself = self.val_size
+        self._load_peptides(self.gen_size)
     
     def __len__(self):
         return len(self.peptides)

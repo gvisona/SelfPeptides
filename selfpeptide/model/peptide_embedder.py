@@ -44,3 +44,16 @@ class SelfPeptideEmbedder_withLogits(nn.Module):
         
     def forward(self, X):
         return self.classifier(self.embedder(X))
+    
+
+    
+class SelfPeptideEmbedder_Hinge(nn.Module):
+    def __init__(self, config, device="cpu"):
+        super().__init__()
+        
+        self.device = device
+        self.embedder = SelfPeptideEmbedder(config, device)
+        self.classifier = nn.Sequential(nn.Linear(config["embedding_dim"], 1), nn.Tanh())
+        
+    def forward(self, X):
+        return self.classifier(self.embedder(X))

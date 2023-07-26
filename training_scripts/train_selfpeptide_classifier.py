@@ -9,17 +9,21 @@ import os
 from os.path import exists, join
 from tqdm import tqdm
 
-from pytorch_metric_learning.distances import CosineSimilarity 
-from pytorch_metric_learning.miners import TripletMarginMiner
-from pytorch_metric_learning.reducers import ThresholdReducer
-from pytorch_metric_learning.regularizers import LpRegularizer
-from pytorch_metric_learning import losses, testers
-from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
-
-from selfpeptide.utils.data_utils import PeptideTripletsDataset, PeptideDataset_forMining
+from selfpeptide.utils.data_utils import Self_NonSelf_PeptideDataset
 from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics
-from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_withLogits
+from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_Hinge
+
+
+class BinaryHingeLoss(nn.Module):
+    def __init__(self, margin=0.8):
+        super().__init__()
+        self.margin = margin
+    
+    def forward(self, predictions, targets):
+        # Targets must be -1 and 1
+        return torch.mean(torch.clamp(self.margin - targets * predictions, min=0.0))
+
 
 
 def train(config=None, init_wandb=True):
@@ -55,17 +59,15 @@ def train(config=None, init_wandb=True):
     checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
 
     
-    # val_dset = PeptideTripletsDataset(config["hdf5_dataset"], gen_size=config["n_val_triplets"], init_random_state=config["seed"])
-    val_dset = PeptideDataset_forMining(config["hdf5_dataset"], gen_size=config["val_size"], init_random_state=config["seed"])
-    val_peptides = val_dset.get_stored_peptides()
-    train_dset = PeptideDataset_forMining(config["hdf5_dataset"], gen_size=config["gen_size"], hold_out_set=val_peptides)
+    val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"])
+    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], val_size=config["val_size"])
     
-    train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=False, drop_last=True)
+    train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
     val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     
     
     
-    model = SelfPeptideEmbedder_withLogits(config, device)
+    model = SelfPeptideEmbedder_Hinge(config, device)
     model.to(device)
     for p in model.parameters():
         if not p.requires_grad:
@@ -86,8 +88,7 @@ def train(config=None, init_wandb=True):
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
 
-    loss_function = nn.BCEWithLogitsLoss()
-    
+    loss_function = BinaryHingeLoss(margin=config.get("margin", 0.8))
 
     
     gen_train = iter(train_loader)    
@@ -116,7 +117,7 @@ def train(config=None, init_wandb=True):
         loss = loss_function(predictions, labels.view(-1,1))
         
         
-        train_loss_logs = {"train/BCE_loss": loss.item()}
+        train_loss_logs = {"train/hinge_loss": loss.item()}
         if avg_train_logs is None:
             avg_train_logs = train_loss_logs.copy()
         else:
@@ -149,7 +150,7 @@ def train(config=None, init_wandb=True):
                 val_loss = loss_function(predictions, labels.view(-1,1))
                 val_predictions.append(predictions.detach())
                 val_labels.append(labels)
-                val_loss_logs = {"val/BCE_loss": val_loss.item()}
+                val_loss_logs = {"val/hinge_loss": val_loss.item()}
                 
                 if avg_val_logs is None:
                     avg_val_logs = val_loss_logs.copy()
@@ -158,12 +159,13 @@ def train(config=None, init_wandb=True):
                         avg_val_logs[k] += val_loss_logs[k]
             
             
-            val_predictions = torch.cat(val_predictions).view(-1, 1)
+            val_predictions = torch.cat(val_predictions)
             val_labels = torch.cat(val_labels)
+            val_labels = (val_labels+1)/2
  
             val_classification_metrics = eval_classification_metrics(val_labels, val_predictions, 
                                                                      is_logit=False, 
-                                                                     threshold=0.5)
+                                                                     threshold=0.0)
             val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
             
             for k in avg_val_logs:
@@ -187,7 +189,7 @@ def train(config=None, init_wandb=True):
             
             
             current_lr = scheduler.get_last_lr()[0]
-            val_train_difference = avg_val_logs["val/BCE_loss"] - avg_train_logs["train/BCE_loss"]
+            val_train_difference = avg_val_logs["val/hinge_loss"] - avg_train_logs["train/hinge_loss"]
             logs = {"learning_rate": current_lr, 
                     "accumulated_batch": n_update,
                     "val_train_difference": val_train_difference}
@@ -217,11 +219,11 @@ def train(config=None, init_wandb=True):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--experiment_name", type=str, default="devel_classifier")
+    parser.add_argument("--experiment_name", type=str, default="devel_hinge_classifier")
     parser.add_argument("--experiment_group", type=str, default="classifier_embedder")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     
-    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/peptide_reference_dataset.hdf5")
+    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5")
     
     
 
