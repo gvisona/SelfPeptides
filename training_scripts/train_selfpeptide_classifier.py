@@ -110,6 +110,8 @@ def train(config=None, init_wandb=True):
             train_batch = next(gen_train)
             
         peptides, labels = train_batch
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
         labels = labels.to(device).float()
 
         predictions = model(peptides)
@@ -144,12 +146,14 @@ def train(config=None, init_wandb=True):
             val_labels = []
             for ix, val_batch in enumerate(val_loader):
                 peptides, labels = val_batch
+                if torch.is_tensor(peptides):
+                    peptides = peptides.to(device)
                 labels = labels.to(device).float()               
                 predictions = model(peptides)
                 
                 val_loss = loss_function(predictions, labels.view(-1,1))
                 val_predictions.append(predictions.detach())
-                val_labels.append(labels)
+                val_labels.append(labels.detach())
                 val_loss_logs = {"val/hinge_loss": val_loss.item()}
                 
                 if avg_val_logs is None:
@@ -159,8 +163,8 @@ def train(config=None, init_wandb=True):
                         avg_val_logs[k] += val_loss_logs[k]
             
             
-            val_predictions = torch.cat(val_predictions)
-            val_labels = torch.cat(val_labels)
+            val_predictions = torch.cat(val_predictions).cpu().numpy()
+            val_labels = torch.cat(val_labels).cpu().numpy()
             val_labels = (val_labels+1)/2
  
             val_classification_metrics = eval_classification_metrics(val_labels, val_predictions, 
