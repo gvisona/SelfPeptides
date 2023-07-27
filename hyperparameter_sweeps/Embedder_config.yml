@@ -1,12 +1,10 @@
 method: random
 metric:
-  goal: maximize
-  name: val_KNN_class/K_5_median/MCC
+  goal: minimize
+  name: train/loss
 parameters:
   embedding_dim:
-    values: 
-    - 32 
-    - 512
+    value: 512
   PMA_num_heads:
     value: 1
   PMA_ln:
@@ -16,23 +14,27 @@ parameters:
   transf_hidden_dim:
     value: 1024
   n_attention_layers:
-    values: 
-    - 2
-    - 4
+    value: 2
   accumulate_batches:
-    value: 16
+    values: 
+    - 16
+    - 64
+    - 256
+    - 1024
   batch_size:
-    value: 16
+    values: 
+    - 16
+    - 64
   cool_down:
     value: 0.8
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_hinge_validation
+    value: Embeddings_hinge_onlytrain
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-2
-    min: 1e-4
+    max: 5.0e-1
+    min: 1e-6
   momentum:
     values: 
     - 0.9
@@ -58,13 +60,13 @@ parameters:
   gen_size:
     value: 1000000
   validate_every_n_updates:
-    value: 200
+    value: 500
   weight_decay:
     values: 
     - 0.0
     - 0.00001
   early_stopping:
-    value: True
+    value: False
   patience:
     value: 1000
   hdf5_dataset:

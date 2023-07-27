@@ -114,9 +114,9 @@ def train(config=None, init_wandb=True):
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                             nesterov=config.get("nesterov_momentum", False),
                             weight_decay=config['weight_decay'])
-    lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
-                                      ramp_up=config['ramp_up'], cool_down=config['cool_down'])
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    # lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
+    #                                   ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
     
     margin = config.get("margin", 0.8)
@@ -160,7 +160,7 @@ def train(config=None, init_wandb=True):
         if n_iter % config['accumulate_batches'] == 0:
             optimizer.step()
             optimizer.zero_grad()
-            scheduler.step()
+            # scheduler.step()
             n_update += 1
             if n_update % config["validate_every_n_updates"] == 0:
                 perform_validation = True
@@ -168,84 +168,84 @@ def train(config=None, init_wandb=True):
         
         if perform_validation:
             perform_validation = False
-            model.eval()
+            # model.eval()
             
 
-            val_embs = []
-            val_labels = []
-            for ix, val_batch in enumerate(val_loader):
-                peptides, labels = val_batch
-                if torch.is_tensor(peptides):
-                    peptides = peptides.to(device)
-                labels = labels.to(device)               
-                embeddings = model(peptides)
-                val_embs.append(embeddings.detach())
-                val_labels.append(labels)
+            # val_embs = []
+            # val_labels = []
+            # for ix, val_batch in enumerate(val_loader):
+            #     peptides, labels = val_batch
+            #     if torch.is_tensor(peptides):
+            #         peptides = peptides.to(device)
+            #     labels = labels.to(device)               
+            #     embeddings = model(peptides)
+            #     val_embs.append(embeddings.detach())
+            #     val_labels.append(labels)
                 
-            val_embs = torch.cat(val_embs, dim=0)
-            val_labels = torch.cat(val_labels)
+            # val_embs = torch.cat(val_embs, dim=0)
+            # val_labels = torch.cat(val_labels)
             
             
             
-            ref_embs = []
-            ref_labels = []
-            for ix, ref_batch in enumerate(ref_loader):
-                peptides, labels = ref_batch
-                if torch.is_tensor(peptides):
-                    peptides = peptides.to(device)
-                labels = labels.to(device)               
-                embeddings = model(peptides)
-                ref_embs.append(embeddings.detach())
-                ref_labels.append(labels)
-            ref_embs = torch.cat(ref_embs, dim=0)
-            ref_labels = torch.cat(ref_labels)            
+            # ref_embs = []
+            # ref_labels = []
+            # for ix, ref_batch in enumerate(ref_loader):
+            #     peptides, labels = ref_batch
+            #     if torch.is_tensor(peptides):
+            #         peptides = peptides.to(device)
+            #     labels = labels.to(device)               
+            #     embeddings = model(peptides)
+            #     ref_embs.append(embeddings.detach())
+            #     ref_labels.append(labels)
+            # ref_embs = torch.cat(ref_embs, dim=0)
+            # ref_labels = torch.cat(ref_labels)            
             
-            val_embs = val_embs / val_embs.norm(dim=1)[:, None]
-            ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
-            similarity = torch.mm(val_embs, ref_embs.transpose(0,1))
+            # val_embs = val_embs / val_embs.norm(dim=1)[:, None]
+            # ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
+            # similarity = torch.mm(val_embs, ref_embs.transpose(0,1))
             
-            val_classification_metrics = {}
+            # val_classification_metrics = {}
             
-            val_labels = (val_labels+1)/2
-            ref_labels = (ref_labels+1)/2
+            # val_labels = (val_labels+1)/2
+            # ref_labels = (ref_labels+1)/2
             
             
-            MAX_K = 11
-            vals, idxs = torch.topk(similarity, MAX_K, dim=1)
-            for K in [5, 11]:
-                k_idxs = idxs[:, :K]
-                knn_classes = ref_labels[k_idxs]
-                pred_median_classes, median_idxs = torch.median(knn_classes, dim=1)
-                # pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
+            # MAX_K = 11
+            # vals, idxs = torch.topk(similarity, MAX_K, dim=1)
+            # for K in [5, 11]:
+            #     k_idxs = idxs[:, :K]
+            #     knn_classes = ref_labels[k_idxs]
+            #     pred_median_classes, median_idxs = torch.median(knn_classes, dim=1)
+            #     # pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
 
                 
-                k_median_classification_metrics = eval_classification_metrics(val_labels.detach().cpu(), pred_median_classes.detach().cpu(), 
-                                                                     is_logit=False, 
-                                                                     threshold=0.5)
-                k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
+            #     k_median_classification_metrics = eval_classification_metrics(val_labels.detach().cpu(), pred_median_classes.detach().cpu(), 
+            #                                                          is_logit=False, 
+            #                                                          threshold=0.5)
+            #     k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
                 
                 
-                # k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_mean_classes, 
-                #                                                      is_logit=False, 
-                #                                                      threshold=0.5)
-                # k_mean_classification_metrics = {"K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
+            #     # k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_mean_classes, 
+            #     #                                                      is_logit=False, 
+            #     #                                                      threshold=0.5)
+            #     # k_mean_classification_metrics = {"K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
                 
-                val_classification_metrics.update(k_median_classification_metrics)
-                # val_classification_metrics.update(k_mean_classification_metrics)
+            #     val_classification_metrics.update(k_median_classification_metrics)
+            #     # val_classification_metrics.update(k_mean_classification_metrics)
                 
                 
-            val_classification_metrics = {"val_KNN_class/"+k: v for k, v in val_classification_metrics.items()}
+            # val_classification_metrics = {"val_KNN_class/"+k: v for k, v in val_classification_metrics.items()}
            
             
-            epoch_val_metrics = val_classification_metrics["val_KNN_class/K_5_median/MCC"] 
+            # epoch_val_metrics = val_classification_metrics["val_KNN_class/K_5_median/MCC"] 
             
             
-            if epoch_val_metrics>best_val_metric:
-                best_val_metric = epoch_val_metrics
-                best_metric_iter = n_iter
-                # torch.save(model.state_dict(), checkpoint_path)
+            # if epoch_val_metrics>best_val_metric:
+            #     best_val_metric = epoch_val_metrics
+            #     best_metric_iter = n_iter
+            #     # torch.save(model.state_dict(), checkpoint_path)
             log_results = True       
-            model.train()
+            # model.train()
             
         if log_results:
             log_results = False
@@ -253,22 +253,22 @@ def train(config=None, init_wandb=True):
                 avg_train_logs[k] /= (config['accumulate_batches'] * config["validate_every_n_updates"])
             
             
-            current_lr = scheduler.get_last_lr()[0]
+            # current_lr = scheduler.get_last_lr()[0]
             # val_train_difference = avg_val_logs["val/triplet_loss"] - avg_train_logs["train/triplet_loss"]
             logs = {
-                "learning_rate": current_lr, 
+                # "learning_rate": current_lr, 
                     "accumulated_batch": n_update}
                     # "val_train_difference": val_train_difference}
             
             logs.update(avg_train_logs)
-            logs.update(val_classification_metrics)
+            # logs.update(val_classification_metrics)
             wandb.log(logs)      
             avg_train_logs = None
             
-        if config.get("early_stopping", False):
-            if (n_iter - best_metric_iter)/n_iters_per_val_cycle>config['patience']:
-                print("Val metric not improving, stopping training..\n\n")
-                break
+        # if config.get("early_stopping", False):
+        #     if (n_iter - best_metric_iter)/n_iters_per_val_cycle>config['patience']:
+        #         print("Val metric not improving, stopping training..\n\n")
+        #         break
             
             
     print("Training complete!")
