@@ -243,7 +243,7 @@ def train(config=None, init_wandb=True):
             if epoch_val_metrics>best_val_metric:
                 best_val_metric = epoch_val_metrics
                 best_metric_iter = n_iter
-                torch.save(model.state_dict(), checkpoint_path)
+                # torch.save(model.state_dict(), checkpoint_path)
             log_results = True       
             model.train()
             
