@@ -123,11 +123,6 @@ def train(config=None, init_wandb=True):
     loss_function = CustomDistanceHingeLoss(margin=margin, device=device, reg_weight=config.get("reg_weight", 0.0))
     
     
-    
-
-    
-    # accuracy_calculator = AccuracyCalculator(k=1)
-    
     gen_train = iter(train_loader)    
     best_val_metric = 0.0
     best_metric_iter = 0
@@ -165,7 +160,7 @@ def train(config=None, init_wandb=True):
         if n_iter % config['accumulate_batches'] == 0:
             optimizer.step()
             optimizer.zero_grad()
-            # scheduler.step()
+            scheduler.step()
             n_update += 1
             if n_update % config["validate_every_n_updates"] == 0:
                 perform_validation = True

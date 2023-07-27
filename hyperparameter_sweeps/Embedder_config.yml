@@ -1,7 +1,7 @@
 method: random
 metric:
-  goal: minimize
-  name: train/hinge_loss
+  goal: maximize
+  name: val_KNN_class/K_5_median/MCC
 parameters:
   embedding_dim:
     values: 
@@ -28,7 +28,7 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_hinge_loss_valtest
+    value: Embeddings_hinge_validation
   lr:
     distribution: log_uniform_values 
     max: 5.0e-2
@@ -73,3 +73,5 @@ parameters:
     value: False
   reg_weight:
     value: 1e-4
+  margin:
+    value: 0.8
