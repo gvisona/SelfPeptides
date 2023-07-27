@@ -16,6 +16,56 @@ class ResNorm(nn.Module):
         # Apply layer normalization to the sum
         return self.norm(add)
     
+       
+class ResBlock(nn.Module):
+    def __init__(self, dim, p_dropout=0.2):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.ReLU(), 
+            nn.Linear(dim, dim), 
+            nn.Dropout(p_dropout)
+        )
+        self.layer_norm = nn.LayerNorm(dim)
+
+    def forward(self, x):
+        return self.layer_norm(x + self.block(x))
+
+
+class ResMLP(nn.Module):
+    def __init__(self, num_layers, dim, output_dim, p_dropout=0.2):
+        super().__init__()
+        layers = [ResBlock(dim, p_dropout=p_dropout) for _ in range(num_layers)] + [
+            nn.Linear(dim, output_dim)
+        ]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+    
+    
+
+class ResMLP_Network(nn.Module):
+    def __init__(self, config, device="cpu"):
+        super().__init__()
+        self.config = config
+        self.device = device
+        
+        input_dim = config.get("mlp_input_dim", None)
+        if input_dim is None:
+            input_dim = 2*config["embedding_dim"]
+        if input_dim==config["mlp_hidden_dim"]:    
+            self.projection_model = ResMLP(config["mlp_num_layers"], config["mlp_hidden_dim"], config["output_dim"], config["dropout_p"])
+        else:
+            self.projection_model = nn.Sequential(nn.Linear(input_dim, config["mlp_hidden_dim"]),
+                                                  ResMLP(config["mlp_num_layers"], config["mlp_hidden_dim"], config["output_dim"]))
+        self.projection_model.to(device)
+        
+    def forward(self, *args):
+        joined_embs = torch.cat(args, dim=-1)
+        if joined_embs.dim()==1:
+            joined_embs = joined_embs.unsqueeze(0)
+        return self.projection_model(joined_embs)
+    
         
         
 #######################################

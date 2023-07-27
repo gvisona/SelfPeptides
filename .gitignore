@@ -3,6 +3,7 @@ processed_data/
 outputs/
 wandb/
 Experimental\ notebooks
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,11 +1,18 @@
-import numpy as np
-import h5py
-from tqdm import tqdm
 import os
+
+import h5py
+import numpy as np
+import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
 from selfpeptide.utils.constants import *
 
+
+#################################################
+# SNS datasets
 class PeptideTripletsDataset(Dataset):
     def __init__(self, hdf5_dataset_fname, gen_size=1000, init_random_state=None, hold_out_set=None):
         self.hdf5_dataset_fname = hdf5_dataset_fname
@@ -202,3 +209,64 @@ class Self_NonSelf_PeptideDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.peptides[idx], self.labels[idx]
+    
+    
+    
+    
+    
+    
+    
+#########################################################
+# Binding affinity datasets
+
+def filter_peptide_dataset(df, vocabulary, label="Peptide"):
+    aa_vocab = set(vocabulary)
+    
+    ix_to_keep = []
+    
+    for i, t in enumerate(df.itertuples()):
+        if len(set(getattr(t, label)).difference(aa_vocab))==0:
+            ix_to_keep.append(i)
+    return df.iloc[ix_to_keep]
+    
+    
+
+    
+def load_binding_affinity_dataframes(config, split_data=True):
+    ps_df = pd.read_csv(config['pseudo_seq_file'], sep="\t")
+    hla_mapping = dict(ps_df[["HLA", "sequence"]].values)
+
+    ba_df = pd.read_csv(config['binding_affinity_df'])
+    ba_df["Allele Pseudo-sequence"] = ba_df["HLA"].str.replace("*", "", regex=False).map(hla_mapping)
+    ba_df = ba_df.dropna().reset_index(drop=True)
+    
+    ba_df = filter_peptide_dataset(ba_df, sorted_vocabulary)
+    
+    ba_df["Stratification_index"] = ba_df["HLA"] + "_" + ba_df["Label"].astype(str)
+    if not split_data:
+        return ba_df
+    
+    ix = ba_df["Stratification_index"].value_counts()
+    low_count_labels = ix[ix<3].index
+    res_df = ba_df[ba_df["Stratification_index"].isin(low_count_labels)]
+    ba_df = ba_df[~ba_df["Stratification_index"].isin(low_count_labels)]
+
+    
+    trainval_ba_df, test_ba_df = train_test_split(ba_df, test_size=config["test_size"], stratify=ba_df["Stratification_index"], random_state=config['seed'], shuffle=True)
+    train_ba_df, val_ba_df = train_test_split(trainval_ba_df, test_size=config["val_size"], stratify=trainval_ba_df["Stratification_index"], random_state=config['seed'], shuffle=True)
+    if res_df is not None:
+        train_ba_df = pd.concat([train_ba_df, res_df])
+        
+    return train_ba_df, val_ba_df, test_ba_df
+
+class SequencesInteractionDataset(Dataset):
+    def __init__(self, df, hla_repr="Allele Pseudo-sequence", target_label="Label"):        
+        super().__init__()
+        cols = ["Peptide", hla_repr, target_label]
+        self.data_matrix = df[cols].values.tolist()
+    
+    def __len__(self):
+        return len(self.data_matrix)
+    
+    def __getitem__(self, ix):
+        return self.data_matrix[ix]

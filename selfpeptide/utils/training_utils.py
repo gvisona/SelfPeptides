@@ -86,3 +86,22 @@ def cosine_similarity_all_pairs(a, b, eps=1e-8):
     b_norm = b / torch.clamp(b_n, min=eps)
     sim_mt = torch.mm(a_norm, b_norm.transpose(0, 1))
     return sim_mt
+
+
+
+def get_effective_class_samples(n_samples_class, beta=0.99):
+    return (1-beta**n_samples_class)/(1-beta)
+
+def get_class_weights(df, target_label="Target"):
+    pos_class_samples = df[target_label].sum()
+    neg_class_samples = len(df) - pos_class_samples
+    
+    n_samples = len(df)
+    rebalancing_beta = (n_samples-1)/n_samples
+    effective_pos_samples = get_effective_class_samples(pos_class_samples, rebalancing_beta)
+    effective_neg_samples = get_effective_class_samples(neg_class_samples, rebalancing_beta)
+    
+    pos_weight = n_samples/effective_pos_samples
+    neg_weight = n_samples/effective_neg_samples
+    
+    return pos_weight, neg_weight

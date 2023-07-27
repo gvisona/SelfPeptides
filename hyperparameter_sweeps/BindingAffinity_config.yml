@@ -1,0 +1,81 @@
+method: random
+metric:
+  goal: minimize
+  name: best_val_loss
+parameters:
+  embedding_dim:
+    value: 512
+  PMA_num_heads:
+    value: 4
+  PMA_ln:
+    value: True
+  num_heads:
+    value: 4
+  transf_hidden_dim:
+    value: 512
+  n_attention_layers:
+    value: 2
+  accumulate_batches:
+    value: 64
+  batch_size:
+    value: 16
+  binding_affinity_df:
+    value: /home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv
+  cool_down:
+    value: 0.8
+  experiment_group:
+    value: DHLAP_binding_affinity_training
+  experiment_name:
+    value: BA_model_training
+  lr:
+    distribution: log_uniform_values
+    min: 5.0e-5
+    max: 5.0e-4
+  momentum:
+    value: 0.9
+  nesterov_momentum:
+    value: True
+  max_updates:
+    value: 5000
+  min_frac:
+    value: 0.1
+  dropout_p:
+    values: 
+    - 0.0
+    - 0.05
+    - 0.1
+  mlp_num_layers:
+    value: 2
+  mlp_hidden_dim:
+    value: 2048
+  output_dim:
+    value: 1
+  postprocessing_hidden_dim:
+    value: 32
+  project_folder:
+    value: /fast/gvisona/SelfPeptides
+  pseudo_seq_file:
+    value: /home/gvisona/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat
+  ramp_up:
+    value: 0.1
+  seed:
+    value: 0
+  test_size:
+    value: 0.15
+  val_size:
+    value: 0.1
+  validate_every_n_updates:
+    value: 16
+  weight_decay:
+    values: 
+    - 0.0
+    - 0.00001
+    - 0.0001
+  early_stopping:
+    value: True
+  patience:
+    value: 200
+  pretrained_aa_embeddings:
+    value: "none"
+  hla_repr:
+    value: "Allele Pseudo-sequence"
