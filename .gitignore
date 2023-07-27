@@ -2,6 +2,8 @@ data/
 processed_data/
 outputs/
 wandb/
+Experimental\ notebooks
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

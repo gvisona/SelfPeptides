@@ -8,13 +8,13 @@ from torch.utils.data import DataLoader
 import os
 from os.path import exists, join
 from tqdm import tqdm
-
+import math
 # from pytorch_metric_learning.distances import CosineSimilarity 
-from pytorch_metric_learning.miners import TripletMarginMiner
-from pytorch_metric_learning.reducers import ThresholdReducer
-from pytorch_metric_learning.regularizers import LpRegularizer
-from pytorch_metric_learning import losses, testers
-from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
+# from pytorch_metric_learning.miners import TripletMarginMiner
+# from pytorch_metric_learning.reducers import ThresholdReducer
+# from pytorch_metric_learning.regularizers import LpRegularizer
+# from pytorch_metric_learning import losses, testers
+# from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
 
 from selfpeptide.utils.data_utils import PeptideTripletsDataset, Self_NonSelf_PeptideDataset
@@ -23,6 +23,39 @@ from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder
 
 
 
+def hypershperical_cosine_margin_similarity(emb1, emb2, s=1.0, m=0.5):
+    # Embs must be normalized
+    # emb1 = emb1 / emb1.norm(dim=1)[:, None]
+    # emb2 = emb2 / emb2.norm(dim=1)[:, None]    
+    c = torch.mm(emb1, emb2.transpose(1, 0))
+    c -= m
+    return torch.exp(s*c)
+
+
+class CustomCMT_Loss(nn.Module):
+    def __init__(self, s=1.0, m=0.5):
+        super().__init__()
+        self.s = s
+        self.m = m
+        
+    def forward(self, embeddings, labels):
+        embeddings = embeddings / embeddings.norm(dim=1)[:, None]
+        
+        ix = (labels==1)
+        pos_embs = embeddings[ix]
+        neg_embg = embeddings[~ix]
+        
+        pos_sims = hypershperical_cosine_margin_similarity(pos_embs, pos_embs, s=self.s, m=self.m)
+        # pos_sims -= (math.e * torch.eye(len(pos_sims), device=pos_sims.device))
+        neg_sims = hypershperical_cosine_margin_similarity(pos_embs, neg_embg, s=self.s, m=0.0)       
+        
+        easy_pos_sims, _ = torch.max(pos_sims - (math.e * torch.eye(len(pos_sims), device=pos_sims.device)), dim=1)
+        hard_neg_sims, _ = torch.max(neg_sims, dim=1)
+        
+        loss = -1* torch.log(easy_pos_sims/(easy_pos_sims+hard_neg_sims))
+        return torch.mean(loss)
+    
+    
 
 def train(config=None, init_wandb=True):
     if init_wandb:
@@ -59,11 +92,12 @@ def train(config=None, init_wandb=True):
     
     val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"], )
     ref_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["ref_size"], val_size=config["val_size"])
-    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], val_size=config["val_size"]+config["ref_size"])
+    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], 
+                                             val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=False, drop_last=True)
-    val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
-    ref_loader = DataLoader(ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+    # val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+    # ref_loader = DataLoader(ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     
     
     
@@ -83,22 +117,14 @@ def train(config=None, init_wandb=True):
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                             nesterov=config.get("nesterov_momentum", False),
                             weight_decay=config['weight_decay'])
-    lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
-                                      ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    # lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
+    #                                   ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    lr_lambda = lambda s: 1.0
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
     
-    # distance = CosineSimilarity()
     margin = config.get("margin", 0.3)
-    # mining_func = TripletMarginMiner(
-    #     margin=margin, distance=distance, type_of_triplets="hard"
-    # )
-    # loss_function = losses.TripletMarginLoss(margin=margin,
-    #                                          distance = distance, 
-    #                                         # reducer = ThresholdReducer(high=0.3), 
-    #                                         embedding_regularizer = LpRegularizer())
-    
-    # accuracy_calculator = AccuracyCalculator(k=1)
+    loss_function = CustomCMT_Loss(s=config.get("loss_s", 1.0), m=margin)
     
     gen_train = iter(train_loader)    
     best_val_metric = 0.0
@@ -108,8 +134,7 @@ def train(config=None, init_wandb=True):
     perform_validation = False
     log_results = False
     avg_train_logs = None
-    
-    
+
     for n_iter in tqdm(range(max_iters)):
         try:
             train_batch = next(gen_train)
@@ -119,18 +144,16 @@ def train(config=None, init_wandb=True):
             train_batch = next(gen_train)
             
         peptides, labels = train_batch
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
         labels = labels.to(device)
             
         
         embeddings = model(peptides)
-        indices_tuple = mining_func(embeddings, labels)
-        anchor_idxs = indices_tuple[0]
-        filter_mask = (labels[anchor_idxs]==1)
-        filtered_indices_tuple = tuple(t[filter_mask] for t in indices_tuple)
-        loss = loss_function(embeddings, labels, filtered_indices_tuple)
+        loss = loss_function(embeddings, labels)
         
         
-        train_loss_logs = {"train/triplet_loss": loss.item()}
+        train_loss_logs = {"train/CMT_loss": loss.item()}
         if avg_train_logs is None:
             avg_train_logs = train_loss_logs.copy()
         else:
@@ -150,132 +173,10 @@ def train(config=None, init_wandb=True):
         
         if perform_validation:
             perform_validation = False
-            model.eval()
+            # model.eval()
             
-            # test_embeddings, test_labels = get_all_embeddings(val_dset, model)
-            # print(test_embeddings)
-            
-            # avg_val_logs = None
-            
-            # val_anchor_embs = []
-            # val_pos_embs = []
-            # val_neg_embs = []
-            val_embs = []
-            val_labels = []
-            for ix, val_batch in enumerate(val_loader):
-                peptides, labels = val_batch
-                labels = labels.to(device)               
-                embeddings = model(peptides)
-                val_embs.append(embeddings.detach())
-                val_labels.append(labels)
-                
-            val_embs = torch.cat(val_embs, dim=0)
-            val_labels = torch.cat(val_labels)
-            
-            
-            
-            ref_embs = []
-            ref_labels = []
-            for ix, ref_batch in enumerate(ref_loader):
-                peptides, labels = ref_batch
-                labels = labels.to(device)               
-                embeddings = model(peptides)
-                ref_embs.append(embeddings.detach())
-                ref_labels.append(labels)
-            ref_embs = torch.cat(ref_embs, dim=0)
-            ref_labels = torch.cat(ref_labels)
-             
-            # accuracies = accuracy_calculator.get_accuracy(
-            #     val_embs, val_labels, ref_embs, ref_labels, False
-            # )
-            # print(accuracies)
-            #     anchor, pos, neg = val_batch
-                
-            #     anchor_embs = model(anchor)
-            #     pos_embs = model(pos)
-            #     neg_embs = model(neg)
-                
-            #     val_anchor_embs.append(anchor_embs.detach())
-            #     val_pos_embs.append(pos_embs.detach())
-            #     val_neg_embs.append(neg_embs.detach())
-                
-            #     loss = loss_function(anchor_embs, pos_embs, neg_embs)
-
-            #     val_loss_logs = {"val/triplet_loss": loss.item()}
-                
-            #     if avg_val_logs is None:
-            #         avg_val_logs = val_loss_logs.copy()
-            #     else:
-            #         for k in val_loss_logs:
-            #             avg_val_logs[k] += val_loss_logs[k]
-            
-            # val_anchor_embs = torch.vstack(val_anchor_embs)
-            # val_pos_embs = torch.vstack(val_pos_embs)[:51, :] # TODO only for debugging
-            # val_neg_embs = torch.vstack(val_neg_embs)[:51, :]
-            
-            # val_anchor_embs_norm = val_anchor_embs / val_anchor_embs.norm(dim=1)[:, None]
-            # val_pos_embs_norm = val_pos_embs / val_pos_embs.norm(dim=1)[:, None]
-            # val_neg_embs_norm = val_neg_embs / val_neg_embs.norm(dim=1)[:, None]
-            
-            
-            val_embs = val_embs / val_embs.norm(dim=1)[:, None]
-            ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
-            similarity = torch.mm(val_embs, ref_embs.transpose(0,1))
-            
-            val_classification_metrics = {}
-            
-            MAX_K = 5
-            vals, idxs = torch.topk(similarity, MAX_K, dim=1)
-            for K in [5]:
-                k_idxs = idxs[:, :K]
-                knn_classes = ref_labels[k_idxs]
-                pred_median_classes, median_idxs = torch.median(knn_classes, dim=1)
-                pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
-
-                
-                k_median_classification_metrics = eval_classification_metrics(val_labels, pred_median_classes, 
-                                                                     is_logit=False, 
-                                                                     threshold=0.5)
-                k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
-                
-                
-                k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_mean_classes, 
-                                                                     is_logit=False, 
-                                                                     threshold=0.5)
-                k_mean_classification_metrics = {"K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
-                
-                val_classification_metrics.update(k_median_classification_metrics)
-                val_classification_metrics.update(k_mean_classification_metrics)
-                
-                
-            val_classification_metrics = {"val_KNN_class/"+k: v for k, v in val_classification_metrics.items()}
-            # pos_similarity = torch.mm(val_anchor_embs_norm, val_pos_embs_norm.transpose(0,1))
-            # pos_similarity = torch.mean(pos_similarity, dim=0)
-            # neg_similarity = torch.mm(val_anchor_embs_norm, val_neg_embs_norm.transpose(0,1))
-            # neg_similarity = torch.mean(neg_similarity, dim=0)
-            
-            # predictions = torch.cat((pos_similarity, neg_similarity)).cpu().numpy()
-            # targets = np.concatenate([np.ones(len(pos_similarity)), np.zeros(len(pos_similarity))])
-            
-            # val_classification_metrics = eval_classification_metrics(targets, predictions, 
-            #                                                          is_logit=False, 
-            #                                                          threshold=0.5)
-            
-            # val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
-            
-            # for k in avg_val_logs:
-            #     avg_val_logs[k] /= len(val_loader)
-            
-            
-            epoch_val_metrics = val_classification_metrics["val_KNN_class/K_5_mean/MCC"] 
-            
-            
-            if epoch_val_metrics>best_val_metric:
-                best_val_metric = epoch_val_metrics
-                best_metric_iter = n_iter
-                torch.save(model.state_dict(), checkpoint_path)
             log_results = True       
-            model.train()
+            # model.train()
             
         if log_results:
             log_results = False
@@ -291,7 +192,7 @@ def train(config=None, init_wandb=True):
             
             logs.update(avg_train_logs)
             # logs.update(best_metric_iter)
-            logs.update(val_classification_metrics)
+            # logs.update(val_classification_metrics)
             wandb.log(logs)      
             avg_train_logs = None
             
@@ -314,11 +215,11 @@ def train(config=None, init_wandb=True):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--experiment_name", type=str, default="devel_peptides")
+    parser.add_argument("--experiment_name", type=str, default="cmt_devel")
     parser.add_argument("--experiment_group", type=str, default="triplet_loss_embedder")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     
-    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/peptide_reference_dataset.hdf5")
+    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5")
     
     
 
@@ -329,13 +230,14 @@ if __name__=="__main__":
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--accumulate_batches", type=int, default=4)
     
-    parser.add_argument("--val_size", type=int, default=1000)
-    parser.add_argument("--ref_size", type=int, default=5000)
-    parser.add_argument("--gen_size", type=int, default=16000)
+    parser.add_argument("--val_size", type=int, default=10)
+    parser.add_argument("--ref_size", type=int, default=50)
+    parser.add_argument("--gen_size", type=int, default=5000)
     
     parser.add_argument("--early_stopping", type=bool, default=True)
+    parser.add_argument("--test_run", type=bool, default=True)
     
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-2)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.95)
     parser.add_argument("--nesterov_momentum", action="store_true", default=True)
