@@ -23,7 +23,7 @@ class PeptideEmbedder(nn.Module):
             aa_embeddings = np.load(config["pretrained_aa_embeddings"])
 
         if aa_embeddings is not None:
-            self.aa_embs = nn.Embedding.from_pretrained(torch.tensor(aa_embeddings).float()).to(self.device)
+            self.aa_embs = nn.Embedding.from_pretrained(torch.tensor(aa_embeddings, requires_grad=False).float(), freeze=True).to(self.device)
         else:
             self.aa_embs = nn.Embedding(len(vocab), config["embedding_dim"], device=device, padding_idx=vocab.index(PADDING_TOKEN))
         self.transformer_encoder = TransformerEncoder(config, device=device)

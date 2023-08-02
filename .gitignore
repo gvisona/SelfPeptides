@@ -4,6 +4,7 @@ outputs/
 wandb/
 Experimental\ notebooks
 .vscode/
+trained_models/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

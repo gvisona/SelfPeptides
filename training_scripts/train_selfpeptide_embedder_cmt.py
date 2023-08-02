@@ -19,42 +19,10 @@ import math
 
 from selfpeptide.utils.data_utils import PeptideTripletsDataset, Self_NonSelf_PeptideDataset
 from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics
-from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder
+from selfpeptide.model.peptide_embedder import PeptideEmbedder
 
 
 
-def hypershperical_cosine_margin_similarity(emb1, emb2, s=1.0, m=0.5):
-    # Embs must be normalized
-    # emb1 = emb1 / emb1.norm(dim=1)[:, None]
-    # emb2 = emb2 / emb2.norm(dim=1)[:, None]    
-    c = torch.mm(emb1, emb2.transpose(1, 0))
-    c -= m
-    return torch.exp(s*c)
-
-
-class CustomCMT_Loss(nn.Module):
-    def __init__(self, s=1.0, m=0.5):
-        super().__init__()
-        self.s = s
-        self.m = m
-        
-    def forward(self, embeddings, labels):
-        embeddings = embeddings / embeddings.norm(dim=1)[:, None]
-        
-        ix = (labels==1)
-        pos_embs = embeddings[ix]
-        neg_embg = embeddings[~ix]
-        
-        pos_sims = hypershperical_cosine_margin_similarity(pos_embs, pos_embs, s=self.s, m=self.m)
-        # pos_sims -= (math.e * torch.eye(len(pos_sims), device=pos_sims.device))
-        neg_sims = hypershperical_cosine_margin_similarity(pos_embs, neg_embg, s=self.s, m=0.0)       
-        
-        easy_pos_sims, _ = torch.max(pos_sims - (math.e * torch.eye(len(pos_sims), device=pos_sims.device)), dim=1)
-        hard_neg_sims, _ = torch.max(neg_sims, dim=1)
-        
-        loss = -1* torch.log(easy_pos_sims/(easy_pos_sims+hard_neg_sims))
-        return torch.mean(loss)
-    
     
 
 def train(config=None, init_wandb=True):
@@ -95,13 +63,13 @@ def train(config=None, init_wandb=True):
     train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], 
                                              val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
     
-    train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=False, drop_last=True)
+    train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
     # val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     # ref_loader = DataLoader(ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     
     
     
-    model = SelfPeptideEmbedder(config, device)
+    model = PeptideEmbedder(config, device)
     model.to(device)
     for p in model.parameters():
         if not p.requires_grad:
@@ -135,6 +103,8 @@ def train(config=None, init_wandb=True):
     log_results = False
     avg_train_logs = None
 
+    wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
+    
     for n_iter in tqdm(range(max_iters)):
         try:
             train_batch = next(gen_train)
@@ -150,10 +120,10 @@ def train(config=None, init_wandb=True):
             
         
         embeddings = model(peptides)
-        loss = loss_function(embeddings, labels)
+        loss, train_loss_logs = loss_function(embeddings, labels)
         
         
-        train_loss_logs = {"train/CMT_loss": loss.item()}
+        # train_loss_logs = {"train/CMT_loss": loss.item()}
         if avg_train_logs is None:
             avg_train_logs = train_loss_logs.copy()
         else:
@@ -215,20 +185,21 @@ def train(config=None, init_wandb=True):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--experiment_name", type=str, default="cmt_devel")
+    parser.add_argument("--experiment_name", type=str, default="gradient_check")
     parser.add_argument("--experiment_group", type=str, default="triplet_loss_embedder")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     
-    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5")
+    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5")
+    parser.add_argument("--pretrained_aa_embeddings", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy")
     
     
 
-    parser.add_argument("--max_updates", type=int, default=10000)
+    parser.add_argument("--max_updates", type=int, default=100000)
     parser.add_argument("--patience", type=int, default=1000)
-    parser.add_argument("--validate_every_n_updates", type=int, default=16)
+    parser.add_argument("--validate_every_n_updates", type=int, default=50)
     
     parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--accumulate_batches", type=int, default=4)
+    parser.add_argument("--accumulate_batches", type=int, default=16)
     
     parser.add_argument("--val_size", type=int, default=10)
     parser.add_argument("--ref_size", type=int, default=50)
@@ -237,7 +208,8 @@ if __name__=="__main__":
     parser.add_argument("--early_stopping", type=bool, default=True)
     parser.add_argument("--test_run", type=bool, default=True)
     
-    parser.add_argument("--lr", type=float, default=1e-2)
+    parser.add_argument("--margin", type=float, default=0.6)
+    parser.add_argument("--lr", type=float, default=1.0e-6)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.95)
     parser.add_argument("--nesterov_momentum", action="store_true", default=True)
@@ -247,7 +219,7 @@ if __name__=="__main__":
 
 
     parser.add_argument("--dropout_p", type=float, default=0.15)
-    parser.add_argument("--embedding_dim", type=int, default=256)
+    parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--transf_hidden_dim", type=int, default=128)
     parser.add_argument("--n_attention_layers", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)

@@ -8,6 +8,7 @@ from itertools import islice, zip_longest
 import os
 from os.path import exists, join
 import torch
+import torch.nn as nn
 
 def sigmoid(x):
     return 1/(1 + np.exp(-x))
@@ -105,3 +106,89 @@ def get_class_weights(df, target_label="Target"):
     neg_weight = n_samples/effective_neg_samples
     
     return pos_weight, neg_weight
+
+
+
+
+class CustomCosineDistanceHingeLoss(nn.Module):
+    def __init__(self, margin=0.8, device="cpu", reg_weight=1e-5):
+        super().__init__()
+        self.margin = margin
+        self.device = device
+        self.hinge_loss = nn.HingeEmbeddingLoss(margin=margin)
+        
+        self.reg_weight = reg_weight
+    
+    def forward(self, embeddings, labels):
+        pos_ix = (labels==1)
+        neg_ix = (labels==-1)
+        
+        pos_embeddings = embeddings[pos_ix]
+        neg_embeddings = embeddings[neg_ix]        
+        
+        # Similarities Pos-Pos
+        pos_distance = 1 - cosine_similarity_all_pairs(pos_embeddings, pos_embeddings)
+        ixs = torch.triu_indices(*pos_distance.shape, offset=1)
+        pos_cos_distances = pos_distance[ixs[0], ixs[1]]
+        
+        
+        # Similarities Pos-Neg
+        neg_distance = 1 - cosine_similarity_all_pairs(pos_embeddings, neg_embeddings)
+        ixs = torch.triu_indices(*neg_distance.shape, offset=0)
+        neg_cos_distances = neg_distance[ixs[0], ixs[1]]
+        
+        cos_distances = torch.cat([neg_cos_distances, pos_cos_distances])
+        hinge_labels = torch.ones(len(neg_cos_distances)+len(pos_cos_distances), device=self.device)
+        hinge_labels[:len(neg_cos_distances)] = -1
+        hinge_loss = self.hinge_loss(cos_distances, hinge_labels)
+        
+        regularization = self.reg_weight * torch.mean(embeddings.norm(dim=1))
+        
+        loss = hinge_loss + regularization
+        logs = {"loss": loss, "hinge_loss": hinge_loss, "regularization": regularization}
+        return loss, logs
+    
+    
+    
+
+def hypershperical_cosine_margin_similarity(emb1, emb2, s=1.0, m=0.5):
+    # Embs must be normalized
+    # emb1 = emb1 / emb1.norm(dim=1)[:, None]
+    # emb2 = emb2 / emb2.norm(dim=1)[:, None]    
+    c = torch.mm(emb1, emb2.transpose(1, 0))
+    c -= m
+    return torch.exp(s*c)
+
+
+class CustomCMT_Loss(nn.Module):
+    def __init__(self, s=1.0, m=0.5):
+        super().__init__()
+        self.s = s
+        self.m = m
+        
+        
+    def forward(self, embeddings, labels):
+        emb_norm = embeddings.norm(dim=1)
+        l2_weight = 0.01
+        
+        embeddings = embeddings / embeddings.norm(dim=1)[:, None]
+        
+        ix = (labels==1)
+        pos_embs = embeddings[ix]
+        neg_embg = embeddings[~ix]
+        
+        pos_sims = hypershperical_cosine_margin_similarity(pos_embs, pos_embs, s=self.s, m=self.m)
+        # pos_sims -= (math.e * torch.eye(len(pos_sims), device=pos_sims.device))
+        neg_sims = hypershperical_cosine_margin_similarity(pos_embs, neg_embg, s=self.s, m=0.0)       
+        
+        easy_pos_sims, _ = torch.max(pos_sims - (math.e * torch.eye(len(pos_sims), device=pos_sims.device)), dim=1)
+        hard_neg_sims, _ = torch.max(neg_sims, dim=1)
+        
+        cmt_loss = torch.mean(-1* torch.log(easy_pos_sims/(easy_pos_sims+hard_neg_sims)))
+        
+        hypersphere_reg = torch.mean(torch.square(emb_norm-self.s))
+        loss = cmt_loss #+ l2_weight*hypersphere_reg
+        
+        logs = {"loss": loss.item(), "cmt_loss": cmt_loss.item(), 'hypersphere_reg': hypersphere_reg}
+        return loss, logs
+    
