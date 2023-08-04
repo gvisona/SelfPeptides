@@ -115,7 +115,7 @@ def train(config=None, init_wandb=True):
             peptides = peptides.to(device)
         labels = labels.to(device).float()
 
-        predictions = model(peptides)
+        predictions, embeddings = model(peptides)
         
         loss = loss_function(predictions, labels.view(-1,1))
         
@@ -231,24 +231,24 @@ if __name__=="__main__":
     parser.add_argument("--experiment_group", type=str, default="classifier_embedder")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     
-    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/pre_tokenized_peptides_dataset.hdf5")
-    
-    
+    parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5")
+    parser.add_argument("--pretrained_aa_embeddings", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy")
 
     parser.add_argument("--max_updates", type=int, default=100000)
     parser.add_argument("--patience", type=int, default=1000)
     parser.add_argument("--validate_every_n_updates", type=int, default=100)
     
-    parser.add_argument("--batch_size", type=int, default=16)
+    
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--accumulate_batches", type=int, default=16)
     
-    parser.add_argument("--val_size", type=int, default=1000)
-    parser.add_argument("--gen_size", type=int, default=10000)
+    parser.add_argument("--val_size", type=int, default=10)
+    parser.add_argument("--gen_size", type=int, default=512)
     
     parser.add_argument("--early_stopping", type=bool, default=False)
     parser.add_argument("--test_run", action="store_true", default=True)
     
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.95)
     parser.add_argument("--nesterov_momentum", action="store_true", default=True)
@@ -258,8 +258,9 @@ if __name__=="__main__":
 
 
     parser.add_argument("--dropout_p", type=float, default=0.15)
-    parser.add_argument("--embedding_dim", type=int, default=256)
-    parser.add_argument("--transf_hidden_dim", type=int, default=128)
+    parser.add_argument("--embedding_dim", type=int, default=512)
+    parser.add_argument("--transf_hidden_dim", type=int, default=1024)
+    parser.add_argument("--classifier_hidden_dim", type=int, default=1024)
     parser.add_argument("--n_attention_layers", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)
     parser.add_argument("--PMA_num_heads", type=int, default=1)

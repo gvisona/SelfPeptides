@@ -79,9 +79,9 @@ def train(config=None, init_wandb=True):
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                             nesterov=config.get("nesterov_momentum", False),
                             weight_decay=config['weight_decay'])
-    lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
-                                      ramp_up=config['ramp_up'], cool_down=config['cool_down'])
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    # lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
+    #                                   ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     # scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=0.1*config['lr'], max_lr=config['lr'],
     #                                               step_size_up=config.get("step_size_up", 200)*config["accumulate_batches"])
     
@@ -99,7 +99,7 @@ def train(config=None, init_wandb=True):
     
 
     
-    # wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
+    wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
     # for n_iter in tqdm(range(max_iters)):\
     pbar = tqdm(range(max_iters))
     n_iter = -1
@@ -133,7 +133,7 @@ def train(config=None, init_wandb=True):
             if n_iter % config['accumulate_batches'] == 0:
                 optimizer.step()
                 optimizer.zero_grad()
-                scheduler.step()
+                # scheduler.step()
                 n_update += 1
                 if n_update % config["validate_every_n_updates"] == 0:
                     perform_validation = True
@@ -226,10 +226,10 @@ def train(config=None, init_wandb=True):
                     avg_train_logs[k] /= (config['accumulate_batches'] * config["validate_every_n_updates"])
                 
                 
-                current_lr = scheduler.get_last_lr()[0]
+                # current_lr = scheduler.get_last_lr()[0]
                 # val_train_difference = avg_val_logs["val/triplet_loss"] - avg_train_logs["train/triplet_loss"]
                 logs = {
-                    "learning_rate": current_lr, 
+                    # "learning_rate": current_lr, 
                         "accumulated_batch": n_update}
                         # "val_train_difference": val_train_difference}
                 
@@ -269,22 +269,22 @@ if __name__=="__main__":
 
     parser.add_argument("--max_updates", type=int, default=100000)
     parser.add_argument("--patience", type=int, default=1000)
-    parser.add_argument("--validate_every_n_updates", type=int, default=16)
+    parser.add_argument("--validate_every_n_updates", type=int, default=2)
     
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--accumulate_batches", type=int, default=1)
     
-    parser.add_argument("--val_size", type=int, default=1000)
-    parser.add_argument("--ref_size", type=int, default=1000)
-    parser.add_argument("--gen_size", type=int, default=1000)
+    parser.add_argument("--val_size", type=int, default=10)
+    parser.add_argument("--ref_size", type=int, default=10)
+    parser.add_argument("--gen_size", type=int, default=256)
     
     parser.add_argument("--early_stopping", type=bool, default=True)
     parser.add_argument("--test_run", type=bool, default=True)
     
-    parser.add_argument("--margin", type=float, default=0.8)
-    parser.add_argument("--reg_weight", type=float, default=0.001)
+    parser.add_argument("--margin", type=float, default=0.9)
+    parser.add_argument("--reg_weight", type=float, default=0.0)
     
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.95)
     parser.add_argument("--nesterov_momentum", action="store_true", default=True)
@@ -293,11 +293,11 @@ if __name__=="__main__":
     parser.add_argument("--cool_down", type=float, default=0.6)
 
 
-    parser.add_argument("--dropout_p", type=float, default=0.05)
+    parser.add_argument("--dropout_p", type=float, default=0.0)
     parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--transf_hidden_dim", type=int, default=2048)
-    parser.add_argument("--n_attention_layers", type=int, default=1)
-    parser.add_argument("--num_heads", type=int, default=1)
+    parser.add_argument("--n_attention_layers", type=int, default=4)
+    parser.add_argument("--num_heads", type=int, default=4)
     parser.add_argument("--PMA_num_heads", type=int, default=1)
     
     args = parser.parse_args()

@@ -32,11 +32,25 @@ class PeptideEmbedder(nn.Module):
         self.pooling = PMA_MaskedAttention(config["embedding_dim"], config["PMA_num_heads"], 1, ln=pma_ln)
         self.pooling.to(device)
         
+        self.fn = nn.Linear(config["embedding_dim"], config["embedding_dim"])
+        self.apply(self._init_weights)
+        
+        
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            if module.bias is not None:
+                module.bias.data.normal_(mean=0.0, std=0.01)
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.normal_(mean=0.0, std=0.01)
+            module.weight.data.normal_(mean=1.0, std=0.01)
+
     def forward(self, X):
         input_ids, padding_mask = self.tokenizer(X)
         aa_embeddings = self.aa_embs(input_ids)
         token_embeddings = self.transformer_encoder(aa_embeddings, padding_mask)
-        return self.pooling(token_embeddings, padding_mask)
+        sequence_embeddings = self.pooling(token_embeddings, padding_mask)
+        return self.fn(sequence_embeddings)
     
     
     
@@ -59,7 +73,22 @@ class SelfPeptideEmbedder_Hinge(nn.Module):
         
         self.device = device
         self.embedder = PeptideEmbedder(config, device)
-        self.classifier = nn.Sequential(nn.Linear(config["embedding_dim"], 1), nn.Tanh())
+        self.classifier = nn.Sequential(nn.Linear(config["embedding_dim"], config["classifier_hidden_dim"]),
+                                        nn.ReLU(),
+            nn.Linear(config["classifier_hidden_dim"], 1), 
+            nn.Tanh())
+        self.apply(self._init_weights)
         
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            if module.bias is not None:
+                module.bias.data.normal_(mean=0.0, std=0.01)
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.normal_(mean=0.0, std=0.01)
+            module.weight.data.normal_(mean=1.0, std=0.01)
+            
     def forward(self, X):
-        return self.classifier(self.embedder(X))
+        embeddings = self.embedder(X)
+        predictions = self.classifier(embeddings)
+        return predictions, embeddings
