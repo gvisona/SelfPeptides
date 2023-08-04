@@ -92,3 +92,21 @@ class SelfPeptideEmbedder_Hinge(nn.Module):
         embeddings = self.embedder(X)
         predictions = self.classifier(embeddings)
         return predictions, embeddings
+    
+    
+
+class SelfPeptideEmbedder_withProjHead(nn.Module):
+    def __init__(self, config, device="cpu"):
+        super().__init__()
+        
+        self.device = device
+        self.embedder = PeptideEmbedder(config, device)
+        self.projection_head = nn.Sequential(nn.Linear(config["embedding_dim"], config["projection_hidden_dim"]),
+                                        nn.ReLU(),
+            nn.Linear(config["projection_hidden_dim"], config["projection_dim"]))
+
+        
+    def forward(self, X):
+        embeddings = self.embedder(X)
+        projections = self.projection_head(embeddings)
+        return projections, embeddings

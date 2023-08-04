@@ -9,17 +9,11 @@ import os
 from os.path import exists, join
 from tqdm import tqdm
 import math
-# from pytorch_metric_learning.distances import CosineSimilarity 
-# from pytorch_metric_learning.miners import TripletMarginMiner
-# from pytorch_metric_learning.reducers import ThresholdReducer
-# from pytorch_metric_learning.regularizers import LpRegularizer
-# from pytorch_metric_learning import losses, testers
-# from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 
 
 from selfpeptide.utils.data_utils import PeptideTripletsDataset, Self_NonSelf_PeptideDataset
-from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics, CustomCMT_Loss
-from selfpeptide.model.peptide_embedder import PeptideEmbedder
+from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics, CustomCMT_AllTriplets_Loss
+from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_withProjHead
 
 
 
@@ -69,7 +63,7 @@ def train(config=None, init_wandb=True):
     
     
     
-    model = PeptideEmbedder(config, device)
+    model = SelfPeptideEmbedder_withProjHead(config, device)
     model.to(device)
     for p in model.parameters():
         if not p.requires_grad:
@@ -91,8 +85,8 @@ def train(config=None, init_wandb=True):
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
     
-    margin = config.get("margin", 0.3)
-    loss_function = CustomCMT_Loss(s=config.get("loss_s", 1.0), m=margin)
+    margin = config.get("margin", 0.8)
+    loss_function = CustomCMT_AllTriplets_Loss(s=config.get("loss_s", 1.0), m=margin)
     
     gen_train = iter(train_loader)    
     best_val_metric = 0.0
@@ -103,7 +97,7 @@ def train(config=None, init_wandb=True):
     log_results = False
     avg_train_logs = None
 
-    wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
+    # wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
     
     for n_iter in tqdm(range(max_iters)):
         try:
@@ -119,8 +113,8 @@ def train(config=None, init_wandb=True):
         labels = labels.to(device)
             
         
-        embeddings = model(peptides)
-        loss, train_loss_logs = loss_function(embeddings, labels)
+        projections, embeddings = model(peptides)
+        loss, train_loss_logs = loss_function(projections, labels)
         
         
         # train_loss_logs = {"train/CMT_loss": loss.item()}
@@ -200,7 +194,7 @@ if __name__=="__main__":
     parser.add_argument("--validate_every_n_updates", type=int, default=50)
     
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--accumulate_batches", type=int, default=1)
+    parser.add_argument("--accumulate_batches", type=int, default=4)
     
     parser.add_argument("--val_size", type=int, default=10)
     parser.add_argument("--ref_size", type=int, default=50)
@@ -210,9 +204,9 @@ if __name__=="__main__":
     parser.add_argument("--test_run", type=bool, default=True)
     
     parser.add_argument("--margin", type=float, default=0.7)
-    parser.add_argument("--lr", type=float, default=1.0e-3)
+    parser.add_argument("--lr", type=float, default=1.0e-5)
     parser.add_argument("--weight_decay", type=float, default=0.0)
-    parser.add_argument("--momentum", type=float, default=0.95)
+    parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--nesterov_momentum", action="store_true", default=True)
     parser.add_argument("--min_frac", type=float, default=0.01)
     parser.add_argument("--ramp_up", type=float, default=0.3)
@@ -221,6 +215,8 @@ if __name__=="__main__":
 
     parser.add_argument("--dropout_p", type=float, default=0.15)
     parser.add_argument("--embedding_dim", type=int, default=512)
+    parser.add_argument("--projection_hidden_dim", type=int, default=2048)
+    parser.add_argument("--projection_dim", type=int, default=32)
     parser.add_argument("--transf_hidden_dim", type=int, default=2048)
     parser.add_argument("--n_attention_layers", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=1)

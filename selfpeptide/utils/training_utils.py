@@ -175,11 +175,11 @@ class CustomCMT_Loss(nn.Module):
         
         ix = (labels==1)
         pos_embs = embeddings[ix]
-        neg_embg = embeddings[~ix]
+        neg_embs = embeddings[~ix]
         
         pos_sims = hypershperical_cosine_margin_similarity(pos_embs, pos_embs, s=self.s, m=self.m)
         # pos_sims -= (math.e * torch.eye(len(pos_sims), device=pos_sims.device))
-        neg_sims = hypershperical_cosine_margin_similarity(pos_embs, neg_embg, s=self.s, m=0.0)       
+        neg_sims = hypershperical_cosine_margin_similarity(pos_embs, neg_embs, s=self.s, m=0.0)       
         
         easy_pos_sims, _ = torch.max(pos_sims - (math.e * torch.eye(len(pos_sims), device=pos_sims.device)), dim=1)
         hard_neg_sims, _ = torch.max(neg_sims, dim=1)
@@ -192,3 +192,39 @@ class CustomCMT_Loss(nn.Module):
         logs = {"loss": loss.item(), "cmt_loss": cmt_loss.item(), 'hypersphere_reg': hypersphere_reg}
         return loss, logs
     
+    
+class CustomCMT_AllTriplets_Loss(nn.Module):
+    def __init__(self, s=1.0, m=0.5, reg_weight=1e-5):
+        super().__init__()
+        self.s = s
+        self.m = m
+        self.reg_weight = reg_weight
+        
+    def forward(self, embeddings, labels):
+        emb_norm = embeddings.norm(dim=1)
+        
+        embeddings = embeddings / embeddings.norm(dim=1)[:, None]
+        
+        ix = (labels==1)
+        pos_embs = embeddings[ix]
+        neg_embs = embeddings[~ix]
+        
+        pos_sims = hypershperical_cosine_margin_similarity(pos_embs, pos_embs, s=self.s, m=self.m)
+        neg_sims = hypershperical_cosine_margin_similarity(pos_embs, neg_embs, s=self.s, m=0.0)       
+        
+        p_ixs = torch.triu_indices(*pos_sims.shape, offset=1)
+        pos_cos_sims = pos_sims[p_ixs[0], p_ixs[1]]
+        
+        n_ixs = torch.triu_indices(*neg_sims.shape, offset=0)
+        neg_cos_sims = neg_sims[n_ixs[0], n_ixs[1]]
+        
+        
+        
+        cmt_loss = -1* torch.log(pos_cos_sims/(pos_cos_sims+neg_cos_sims.view(-1,1)))
+        cmt_loss = torch.mean(cmt_loss)
+        
+        l2_reg = torch.mean(torch.square(emb_norm))#-self.s))
+        loss = cmt_loss + self.reg_weight*l2_reg
+        
+        logs = {"loss": loss.item(), "cmt_loss": cmt_loss.item(), 'l2_reg': l2_reg.item()}
+        return loss, logs

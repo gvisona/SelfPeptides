@@ -9,7 +9,8 @@ import pprint
 
 from argparse import ArgumentParser
 import wandb
-from training_scripts.train_selfpeptide_embedder_hinge import train
+# from training_scripts.train_selfpeptide_embedder_hinge import train
+from training_scripts.train_selfpeptide_embedder_cmt import train
 
 
 if __name__=="__main__":
@@ -17,7 +18,7 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     
-    sweep_id = 'r8fvxhfq'
+    sweep_id = 'pvvwufwk'
     
     if os.path.exists("/home/gvisona/Projects/SelfPeptides"):
         project_folder = "/home/gvisona/Projects/SelfPeptides"
