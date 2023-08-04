@@ -71,3 +71,5 @@ parameters:
     value: "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5"
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy"
+  test_run:
+    value: True
