@@ -28,15 +28,15 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_CMT_allPairs_overfit
+    value: Embeddings_CMT_allPairs_noTest
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-3
+    max: 5.0e-5
     min: 1e-7
   momentum:
     values: 
     - 0.9
-    - 0.99
+    - 0.8
   nesterov_momentum:
     values: 
     - True
@@ -58,7 +58,7 @@ parameters:
   ref_size:
     value: 10
   gen_size:
-    value: 1000
+    value: 100000
   validate_every_n_updates:
     value: 16
   weight_decay:
@@ -70,7 +70,7 @@ parameters:
   hdf5_dataset:
     value: "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5"
   test_run:
-    value: True
+    value: False
   reg_weight:
     value: 1e-4
   margin:
