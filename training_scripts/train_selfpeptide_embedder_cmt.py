@@ -58,8 +58,8 @@ def train(config=None, init_wandb=True):
                                              val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
-    # val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
-    # ref_loader = DataLoader(ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+    val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+    ref_loader = DataLoader(ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     
     
     
@@ -79,9 +79,9 @@ def train(config=None, init_wandb=True):
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                             nesterov=config.get("nesterov_momentum", False),
                             weight_decay=config['weight_decay'])
-    # lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
-    #                                   ramp_up=config['ramp_up'], cool_down=config['cool_down'])
-    lr_lambda = lambda s: 1.0
+    lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
+                                      ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    # lr_lambda = lambda s: 1.0
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
     
@@ -99,73 +99,141 @@ def train(config=None, init_wandb=True):
 
     # wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
     
-    for n_iter in tqdm(range(max_iters)):
-        try:
-            train_batch = next(gen_train)
-        except StopIteration:
-            train_dset.refresh_data()
-            gen_train = iter(train_loader)
-            train_batch = next(gen_train)
+    pbar = tqdm(range(config["max_updates"]))
+    n_iter = 0
+    while n_iter<max_iters:
+        for batch_ix, train_batch in enumerate(train_loader):
+            n_iter += 1
+            peptides, labels = train_batch
+            if torch.is_tensor(peptides):
+                peptides = peptides.to(device)
+            labels = labels.to(device)
+                
+            projections, embeddings = model(peptides)
+            loss, train_loss_logs = loss_function(projections, labels)
             
-        peptides, labels = train_batch
-        if torch.is_tensor(peptides):
-            peptides = peptides.to(device)
-        labels = labels.to(device)
+            if avg_train_logs is None:
+                avg_train_logs = train_loss_logs.copy()
+            else:
+                for k in train_loss_logs:
+                    avg_train_logs[k] += train_loss_logs[k]
+            loss.backward()
+                
+                
+            if n_iter % config['accumulate_batches'] == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                scheduler.step()
+                n_update += 1
+                pbar.update(1)
+                if n_update % config["validate_every_n_updates"] == 0:
+                    perform_validation = True
             
+            
+            if perform_validation:
+                perform_validation = False
+                model.eval()
+                
+
+                val_embs = []
+                val_labels = []
+                for ix, val_batch in enumerate(val_loader):
+                    peptides, labels = val_batch
+                    if torch.is_tensor(peptides):
+                        peptides = peptides.to(device)
+                    labels = labels.to(device)               
+                    projections, embeddings = model(peptides)
+                    val_embs.append(projections.detach())
+                    val_labels.append(labels)
+                    
+                val_embs = torch.cat(val_embs, dim=0)
+                val_labels = torch.cat(val_labels)
+                
+                
+                
+                ref_embs = []
+                ref_labels = []
+                for ix, ref_batch in enumerate(ref_loader):
+                    peptides, labels = ref_batch
+                    if torch.is_tensor(peptides):1000 
+                    projections, embeddings = model(peptides)
+                    ref_embs.append(projections.detach())
+                    ref_labels.append(labels)
+                ref_embs = torch.cat(ref_embs, dim=0)
+                ref_labels = torch.cat(ref_labels)            
+                
+                val_embs = val_embs / val_embs.norm(dim=1)[:, None]
+                ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
+                similarity = torch.mm(val_embs, ref_embs.transpose(0,1))
+                
+                val_classification_metrics = {}
+                
+                val_labels = (val_labels+1)/2
+                ref_labels = (ref_labels+1)/2
+                
+                
+                MAX_K = 11
+                vals, idxs = torch.topk(similarity, MAX_K, dim=1)
+                for K in [5, 11]:
+                    k_idxs = idxs[:, :K]
+                    knn_classes = ref_labels[k_idxs]
+                    pred_median_classes, median_idxs = torch.median(knn_classes, dim=1)
+                    # pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
+
+                    
+                    k_median_classification_metrics = eval_classification_metrics(val_labels.detach().cpu(), pred_median_classes.detach().cpu(), 
+                                                                         is_logit=False, 
+                                                                         threshold=0.5)
+                    k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
+                    
+                    
+                    # k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_mean_classes, 
+                    #                                                      is_logit=False, 
+                    #                                                      threshold=0.5)
+                    # k_mean_classification_metrics = {"K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
+                    
+                    val_classification_metrics.update(k_median_classification_metrics)
+                    # val_classification_metrics.update(k_mean_classification_metrics)
+                    
+                    
+                val_classification_metrics = {"val_KNN_class/"+k: v for k, v in val_classification_metrics.items()}
+            
+                
+                epoch_val_metric = val_classification_metrics["val_KNN_class/K_5_median/MCC"] 
+                if epoch_val_metric>best_val_metric:
+                    best_val_metric = epoch_val_metric
+                    best_metric_iter = n_iter
+                    # torch.save(model.state_dict(), checkpoint_path)
+                    
+                log_results = True       
+                model.train()
+                
+            if log_results:
+                log_results = False
+                for k in avg_train_logs:
+                    avg_train_logs[k] /= (config['accumulate_batches'] * config["validate_every_n_updates"])
+                
+                
+                current_lr = scheduler.get_last_lr()[0]
+                # val_train_difference = avg_val_logs["val/triplet_loss"] - avg_train_logs["train/triplet_loss"]
+                logs = {"learning_rate": current_lr, 
+                        "accumulated_batch": n_update}
+                        # "val_train_difference": val_train_difference}
+                
+                logs.update(avg_train_logs)
+                logs.update(val_classification_metrics)
+                wandb.log(logs)      
+                avg_train_logs = None
+            
+            if config.get("early_stopping", False):
+                if (n_iter - best_metric_iter)/n_iters_per_val_cycle>config['patience']:
+                    print("Val metric not improving, stopping training..\n\n")
+                    break
+                
+        train_dset.refresh_data()
         
-        projections, embeddings = model(peptides)
-        loss, train_loss_logs = loss_function(projections, labels)
         
-        
-        # train_loss_logs = {"train/CMT_loss": loss.item()}
-        if avg_train_logs is None:
-            avg_train_logs = train_loss_logs.copy()
-        else:
-            for k in train_loss_logs:
-                avg_train_logs[k] += train_loss_logs[k]
-        loss.backward()
-            
-            
-        if n_iter % config['accumulate_batches'] == 0:
-            optimizer.step()
-            optimizer.zero_grad()
-            scheduler.step()
-            n_update += 1
-            if n_update % config["validate_every_n_updates"] == 0:
-                perform_validation = True
-        
-        
-        if perform_validation:
-            perform_validation = False
-            # model.eval()
-            
-            log_results = True       
-            # model.train()
-            
-        if log_results:
-            log_results = False
-            for k in avg_train_logs:
-                avg_train_logs[k] /= (config['accumulate_batches'] * config["validate_every_n_updates"])
-            
-            
-            current_lr = scheduler.get_last_lr()[0]
-            # val_train_difference = avg_val_logs["val/triplet_loss"] - avg_train_logs["train/triplet_loss"]
-            logs = {"learning_rate": current_lr, 
-                    "accumulated_batch": n_update}
-                    # "val_train_difference": val_train_difference}
-            
-            logs.update(avg_train_logs)
-            # logs.update(best_metric_iter)
-            # logs.update(val_classification_metrics)
-            wandb.log(logs)      
-            avg_train_logs = None
-            
-        # if config.get("early_stopping", False):
-        #     if (n_iter - best_metric_iter)/n_iters_per_val_cycle>config['patience']:
-        #         print("Val metric not improving, stopping training..\n\n")
-        #         break
-            
-            
+    pbar.close()
     print("Training complete!")
 
 
@@ -189,16 +257,16 @@ if __name__=="__main__":
     
     
 
-    parser.add_argument("--max_updates", type=int, default=100000)
+    parser.add_argument("--max_updates", type=int, default=100)
     parser.add_argument("--patience", type=int, default=1000)
-    parser.add_argument("--validate_every_n_updates", type=int, default=50)
+    parser.add_argument("--validate_every_n_updates", type=int, default=10)
     
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--accumulate_batches", type=int, default=4)
     
-    parser.add_argument("--val_size", type=int, default=10)
-    parser.add_argument("--ref_size", type=int, default=50)
-    parser.add_argument("--gen_size", type=int, default=1000)
+    parser.add_argument("--val_size", type=int, default=5000)
+    parser.add_argument("--ref_size", type=int, default=10000)
+    parser.add_argument("--gen_size", type=int, default=100000)
     
     parser.add_argument("--early_stopping", type=bool, default=True)
     parser.add_argument("--test_run", type=bool, default=True)

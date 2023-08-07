@@ -28,21 +28,21 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_CMT_allPairs_noTest
+    value: Embeddings_CMT_allPairs_schedule
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-5
+    max: 1.0e-4
     min: 1e-7
   momentum:
     values: 
     - 0.9
     - 0.8
   nesterov_momentum:
-    values: 
-    - True
-    - False
+    value: True
   max_updates:
-    value: 100000
+    values: 
+    - 100000
+    - 1000000
   min_frac:
     value: 0.1
   dropout_p:
@@ -54,19 +54,19 @@ parameters:
   seed:
     value: 0
   val_size:
-    value: 10
+    value: 5000
   ref_size:
-    value: 10
+    value: 10000
   gen_size:
-    value: 100000
+    value: 1000000
   validate_every_n_updates:
-    value: 16
+    value: 100
   weight_decay:
-    value: 0.0
+    value: 0.000001
   early_stopping:
-    value: False
+    value: True
   patience:
-    value: 1000
+    value: 500
   hdf5_dataset:
     value: "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5"
   test_run:
@@ -75,3 +75,7 @@ parameters:
     value: 1e-4
   margin:
     value: 0.8
+  loss_s:
+    values: 
+    - 1.0
+    - 5.0
