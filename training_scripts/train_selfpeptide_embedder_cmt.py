@@ -11,7 +11,7 @@ from tqdm import tqdm
 import math
 
 
-from selfpeptide.utils.data_utils import PeptideTripletsDataset, Self_NonSelf_PeptideDataset
+from selfpeptide.utils.data_utils import PreSplit_Self_NonSelf_PeptideDataset, split_pretokenized_data
 from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics, CustomCMT_AllTriplets_Loss
 from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_withProjHead
 
@@ -51,11 +51,18 @@ def train(config=None, init_wandb=True):
     os.makedirs(output_folder, exist_ok=True)
     checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
 
+    val_set, ref_set, train_set = split_pretokenized_data(config["hdf5_dataset"], 
+                                                          holdout_sizes=[config["val_size"], config["ref_size"]], 
+                                                          random_state=config["seed"])
     
-    val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"], )
-    ref_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["ref_size"], val_size=config["val_size"])
-    train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], 
-                                             val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
+    val_dset = PreSplit_Self_NonSelf_PeptideDataset(*val_set)
+    ref_dset = PreSplit_Self_NonSelf_PeptideDataset(*ref_set)
+    train_dset = PreSplit_Self_NonSelf_PeptideDataset(*val_set)
+    
+    # val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"], )
+    # ref_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["ref_size"], val_size=config["val_size"])
+    # train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], 
+    #                                          val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
     val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
@@ -230,7 +237,7 @@ def train(config=None, init_wandb=True):
                     print("Val metric not improving, stopping training..\n\n")
                     break
                 
-        train_dset.refresh_data()
+        # train_dset.refresh_data()
         
         
     pbar.close()

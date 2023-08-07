@@ -8,7 +8,9 @@ parameters:
   projection_hidden_dim:
     value: 2048
   projection_dim:
-    value: 32
+    values: 
+    - 16
+    - 32
   PMA_num_heads:
     value: 1
   PMA_ln:
@@ -28,10 +30,10 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_CMT_aP_schedule
+    value: Embeddings_CMT_long
   lr:
     distribution: log_uniform_values 
-    max: 1.0e-4
+    max: 5.0e-6
     min: 1e-7
   momentum:
     values: 
@@ -40,9 +42,7 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    values: 
-    - 100000
-    - 1000000
+    value: 100000000
   min_frac:
     value: 0.1
   dropout_p:
@@ -57,10 +57,8 @@ parameters:
     value: 5000
   ref_size:
     value: 10000
-  gen_size:
-    value: 1000000
   validate_every_n_updates:
-    value: 100
+    value: 50000
   weight_decay:
     value: 0.000001
   early_stopping:
@@ -69,12 +67,10 @@ parameters:
     value: 500
   hdf5_dataset:
     value: "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5"
-  test_run:
-    value: False
   reg_weight:
     value: 1e-4
   margin:
-    value: 0.8
+    value: 0.6
   loss_s:
     values: 
     - 1.0

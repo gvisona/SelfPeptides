@@ -216,6 +216,58 @@ class Self_NonSelf_PeptideDataset(Dataset):
     
     
     
+def split_pretokenized_data(h5py_file, holdout_sizes=[], random_state=None):
+    with h5py.File(h5py_file, "r") as f:
+        print("Loading data")
+        self_peptides = f['reference_human_peptides'][:]
+        nonself_peptides = f['nonself_peptides'][:]    
+    print(self_peptides.shape)
+    if isinstance(holdout_sizes, (int, float)):
+        holdout_sizes = [holdout_sizes]
+        
+    print("Shuffling data")
+    np.random.seed(random_state)
+    np.random.shuffle(self_peptides)
+    np.random.shuffle(nonself_peptides)
+    
+    print("Splitting data")
+    peptides_sets = []
+    for s in tqdm(holdout_sizes):
+        holdout_pos, self_peptides = np.split(self_peptides, [s//2])
+        holdout_neg, nonself_peptides = np.split(nonself_peptides, [s//2])      
+        peptides_sets.append((holdout_pos, holdout_neg))
+
+    peptides_sets.append((self_peptides, nonself_peptides))
+    
+    return peptides_sets
+        
+        
+class PreSplit_Self_NonSelf_PeptideDataset(Dataset):
+    def __init__(self, pos_class_data, neg_class_data,
+                 negative_label=-1):
+        self.pos_class_data = pos_class_data
+        self.neg_class_data = neg_class_data
+        self.negative_label = negative_label        
+        
+        self.n_negative_samples = len(neg_class_data)
+        self.n_positive_samples = len(pos_class_data)
+        self.labels = [negative_label, 1]
+
+    def __len__(self):
+        return len(self.pos_class_data) + len(self.neg_class_data)
+    
+    def __getitem__(self, idx):
+        mod_idx = idx//2
+        sample_class = idx % 2
+        if sample_class==0:
+            mod_idx = mod_idx % self.n_negative_samples
+            peptide = self.neg_class_data[mod_idx]
+        elif sample_class==1:
+            mod_idx = mod_idx % self.n_positive_samples
+            peptide = self.pos_class_data[mod_idx]
+        return peptide, self.labels[sample_class]
+    
+    
 #########################################################
 # Binding affinity datasets
 
