@@ -28,7 +28,7 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_CMT_allPairs_schedule
+    value: Embeddings_CMT_aP_schedule
   lr:
     distribution: log_uniform_values 
     max: 1.0e-4

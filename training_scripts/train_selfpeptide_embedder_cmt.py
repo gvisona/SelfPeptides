@@ -144,7 +144,7 @@ def train(config=None, init_wandb=True):
                     labels = labels.to(device)               
                     projections, embeddings = model(peptides)
                     val_embs.append(projections.detach())
-                    val_labels.append(labels)
+                    val_labels.append(labels.detach())
                     
                 val_embs = torch.cat(val_embs, dim=0)
                 val_labels = torch.cat(val_labels)
@@ -158,18 +158,18 @@ def train(config=None, init_wandb=True):
                     if torch.is_tensor(peptides):1000 
                     projections, embeddings = model(peptides)
                     ref_embs.append(projections.detach())
-                    ref_labels.append(labels)
+                    ref_labels.append(labels.detach())
                 ref_embs = torch.cat(ref_embs, dim=0)
                 ref_labels = torch.cat(ref_labels)            
                 
                 val_embs = val_embs / val_embs.norm(dim=1)[:, None]
                 ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
-                similarity = torch.mm(val_embs, ref_embs.transpose(0,1))
+                similarity = torch.mm(val_embs, ref_embs.transpose(0,1)).cpu()
                 
                 val_classification_metrics = {}
                 
-                val_labels = (val_labels+1)/2
-                ref_labels = (ref_labels+1)/2
+                val_labels = ((val_labels+1)/2).cpu()
+                ref_labels = ((ref_labels+1)/2).cpu()
                 
                 
                 MAX_K = 11
@@ -181,7 +181,7 @@ def train(config=None, init_wandb=True):
                     # pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
 
                     
-                    k_median_classification_metrics = eval_classification_metrics(val_labels.detach().cpu(), pred_median_classes.detach().cpu(), 
+                    k_median_classification_metrics = eval_classification_metrics(val_labels, pred_median_classes, 
                                                                          is_logit=False, 
                                                                          threshold=0.5)
                     k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
