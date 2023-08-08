@@ -8,19 +8,23 @@ parameters:
   projection_hidden_dim:
     value: 2048
   projection_dim:
-    values: 
-    - 16
-    - 32
+    value: 32
   PMA_num_heads:
     value: 1
   PMA_ln:
     value: True
   num_heads:
-    value: 1
+    values: 
+    - 1
+    - 2
+    - 4
   transf_hidden_dim:
     value: 2048
   n_attention_layers:
-    value: 2
+    values: 
+    - 2
+    - 4
+    - 8
   accumulate_batches:
     value: 1
   batch_size:
@@ -30,29 +34,33 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_CMT_long
+    value: Embeddings_CMT_generalization
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-6
-    min: 1e-7
+    max: 1.0e-6
+    min: 1e-8
   momentum:
-    values: 
-    - 0.9
-    - 0.8
+    value: 0.8
   nesterov_momentum:
     value: True
   max_updates:
-    value: 100000000
+    value: 10000000
   min_frac:
     value: 0.1
   dropout_p:
-    value: 0.0 
+    values: 
+    - 0.0
+    - 0.05
+    - 0.1
+    - 0.2 
   project_folder:
     value: /fast/gvisona/SelfPeptides
   ramp_up:
     value: 0.3
   seed:
-    value: 0
+    distribution: int_uniform
+    min: 0
+    max: 100000
   val_size:
     value: 5000
   ref_size:
@@ -60,11 +68,13 @@ parameters:
   validate_every_n_updates:
     value: 50000
   weight_decay:
-    value: 0.000001
+    values: 
+    - 0.000001
+    - 0.00001
   early_stopping:
     value: True
   patience:
-    value: 500
+    value: 1000
   hdf5_dataset:
     value: "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5"
   reg_weight:
@@ -75,3 +85,5 @@ parameters:
     values: 
     - 1.0
     - 5.0
+    - 10.0
+    - 20.0
