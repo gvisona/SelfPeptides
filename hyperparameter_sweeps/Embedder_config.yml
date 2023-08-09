@@ -70,6 +70,8 @@ parameters:
     - 0.00001
   early_stopping:
     value: True
+  test_run:
+    value: False
   patience:
     value: 1000
   hdf5_dataset:
