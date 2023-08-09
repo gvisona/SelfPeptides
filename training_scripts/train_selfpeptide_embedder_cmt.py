@@ -16,7 +16,6 @@ from selfpeptide.utils.training_utils import lr_schedule, eval_classification_me
 from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_withProjHead
 
 
-
     
 
 def train(config=None, init_wandb=True):

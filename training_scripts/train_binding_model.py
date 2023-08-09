@@ -288,7 +288,7 @@ if __name__=="__main__":
     # parser.add_argument("--joint_pooling", action="store_true", default=False)
     parser.add_argument("--PMA_num_heads", type=int, default=2)
     parser.add_argument("--dropout_p", type=float, default=0.15)
-    parser.add_argument("--embedding_dim", type=int, default=64)
+    parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--n_attention_layers", type=int, default=1)
     parser.add_argument("--num_heads", type=int, default=2)
     
@@ -305,7 +305,8 @@ if __name__=="__main__":
     parser.add_argument("--binding_affinity_df", type=str, 
                         default="/home/gvisona/Projects/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv")    
     parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat")
-    parser.add_argument("--pretrained_aa_embeddings", type=str, default="none")
+    parser.add_argument("--pretrained_aa_embeddings", type=str,
+                        default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy")
 
     parser.add_argument("--max_updates", type=int, default=5)
     parser.add_argument("--patience", type=int, default=1000)
