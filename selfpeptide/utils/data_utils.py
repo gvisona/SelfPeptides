@@ -216,12 +216,18 @@ class Self_NonSelf_PeptideDataset(Dataset):
     
     
     
-def split_pretokenized_data(h5py_file, holdout_sizes=[], random_state=None):
-    with h5py.File(h5py_file, "r") as f:
-        print("Loading data")
-        self_peptides = f['reference_human_peptides'][:]
-        nonself_peptides = f['nonself_peptides'][:]    
-    print(self_peptides.shape)
+def split_pretokenized_data(h5py_file, holdout_sizes=[], random_state=None, test_run=False):
+    if test_run:
+        print("LOADING TEST RUN DATA: REMOVE FLAG IF TRAINING ACTUAL MODEL")
+        with h5py.File(h5py_file, "r") as f:
+            print("Loading data")
+            self_peptides = f['reference_human_peptides'][:100000]
+            nonself_peptides = f['nonself_peptides'][:100000]    
+    else:
+        with h5py.File(h5py_file, "r") as f:
+            print("Loading data")
+            self_peptides = f['reference_human_peptides'][:]
+            nonself_peptides = f['nonself_peptides'][:]    
     if isinstance(holdout_sizes, (int, float)):
         holdout_sizes = [holdout_sizes]
         
@@ -245,6 +251,7 @@ def split_pretokenized_data(h5py_file, holdout_sizes=[], random_state=None):
 class PreSplit_Self_NonSelf_PeptideDataset(Dataset):
     def __init__(self, pos_class_data, neg_class_data,
                  negative_label=-1):
+        super().__init__()
         self.pos_class_data = pos_class_data
         self.neg_class_data = neg_class_data
         self.negative_label = negative_label        
@@ -266,6 +273,30 @@ class PreSplit_Self_NonSelf_PeptideDataset(Dataset):
             mod_idx = mod_idx % self.n_positive_samples
             peptide = self.pos_class_data[mod_idx]
         return peptide, self.labels[sample_class]
+    
+    
+class PreTokenized_HumanPeptidesDataset(Dataset):
+    def __init__(self, hdf5_dataset_fname, test_run=False):
+        super().__init__()
+        self.hdf5_dataset_fname = hdf5_dataset_fname
+        if not os.path.exists(self.hdf5_dataset_fname):
+            raise FileNotFoundError("Specify a valid HDF5 file for the dataset")
+        
+        
+        if test_run:
+            with h5py.File(self.hdf5_dataset_fname, 'r') as f:
+                self.peptides = torch.from_numpy(f["reference_human_peptides"][:10000])
+        else:
+            with h5py.File(self.hdf5_dataset_fname, 'r') as f:
+                self.peptides = torch.from_numpy(f["reference_human_peptides"][:])
+        
+    def __len__(self):
+        return len(self.peptides)
+    
+    def __getitem__(self, idx):
+        return self.peptides[idx]
+    
+    
     
     
 #########################################################

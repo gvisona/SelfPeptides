@@ -16,7 +16,9 @@ parameters:
   n_attention_layers:
     value: 2
   accumulate_batches:
-    value: 64
+    values: 
+    - 64
+    - 128
   batch_size:
     value: 16
   binding_affinity_df:
@@ -31,8 +33,8 @@ parameters:
     value: 0.00015839092549681442
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-5
-    min: 5e-8
+    max: 5.0e-3
+    min: 5e-7
   momentum:
     value: 0.9
   nesterov_momentum:

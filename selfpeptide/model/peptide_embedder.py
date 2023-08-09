@@ -104,9 +104,19 @@ class SelfPeptideEmbedder_withProjHead(nn.Module):
         self.projection_head = nn.Sequential(nn.Linear(config["embedding_dim"], config["projection_hidden_dim"]),
                                         nn.ReLU(),
             nn.Linear(config["projection_hidden_dim"], config["projection_dim"]))
+        
+        self.register_buffer("human_peptides_cosine_centroid", torch.zeros(config["embedding_dim"]).float())
+
 
         
-    def forward(self, X):
+    def forward(self, X, return_sns_score=False, eps=1e-8):
         embeddings = self.embedder(X)
         projections = self.projection_head(embeddings)
+        if return_sns_score:
+            embeddings_n = embeddings.norm(dim=1)[:, None]
+            embeddings_norm = embeddings / torch.clamp(embeddings_n, min=eps)
+            sns_score = torch.mm(embeddings_norm, self.human_peptides_cosine_centroid.view(-1,1))
+            return projections, embeddings, sns_score
         return projections, embeddings
+    
+    

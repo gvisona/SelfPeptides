@@ -11,7 +11,7 @@ from tqdm import tqdm
 import math
 
 
-from selfpeptide.utils.data_utils import PreSplit_Self_NonSelf_PeptideDataset, split_pretokenized_data
+from selfpeptide.utils.data_utils import PreSplit_Self_NonSelf_PeptideDataset, split_pretokenized_data, PreTokenized_HumanPeptidesDataset
 from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics, CustomCMT_AllTriplets_Loss
 from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_withProjHead
 
@@ -50,21 +50,19 @@ def train(config=None, init_wandb=True):
     os.makedirs(output_folder, exist_ok=True)
     checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
 
-    val_set, ref_set, train_set = split_pretokenized_data(config["hdf5_dataset"], 
-                                                          holdout_sizes=[config["val_size"], config["ref_size"]], 
-                                                          random_state=config["seed"])
+    val_set, test_set, ref_set, train_set = split_pretokenized_data(config["hdf5_dataset"], 
+                                                          holdout_sizes=[config["val_size"], config["test_size"], config["ref_size"]], 
+                                                          random_state=config["seed"], test_run=config["test_run"])
     
     val_dset = PreSplit_Self_NonSelf_PeptideDataset(*val_set)
+    test_dset = PreSplit_Self_NonSelf_PeptideDataset(*test_set)
     ref_dset = PreSplit_Self_NonSelf_PeptideDataset(*ref_set)
     train_dset = PreSplit_Self_NonSelf_PeptideDataset(*val_set)
     
-    # val_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["val_size"], )
-    # ref_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["ref_size"], val_size=config["val_size"])
-    # train_dset = Self_NonSelf_PeptideDataset(config["hdf5_dataset"], gen_size=config["gen_size"], 
-    #                                          val_size=config["val_size"]+config["ref_size"], test_run=config["test_run"])
     
     train_loader = DataLoader(train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
     val_loader = DataLoader(val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+    test_loader = DataLoader(test_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     ref_loader = DataLoader(ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
     
     
@@ -142,6 +140,7 @@ def train(config=None, init_wandb=True):
                 
 
                 val_embs = []
+                val_proj = []
                 val_labels = []
                 for ix, val_batch in enumerate(val_loader):
                     peptides, labels = val_batch
@@ -149,28 +148,36 @@ def train(config=None, init_wandb=True):
                         peptides = peptides.to(device)
                     labels = labels.to(device)               
                     projections, embeddings = model(peptides)
-                    val_embs.append(projections.detach())
+                    val_embs.append(embeddings.detach())
+                    val_proj.append(projections.detach())
                     val_labels.append(labels.detach())
                     
                 val_embs = torch.cat(val_embs, dim=0)
+                val_proj = torch.cat(val_proj, dim=0)
                 val_labels = torch.cat(val_labels)
                 
                 
                 
                 ref_embs = []
+                ref_proj = []
                 ref_labels = []
                 for ix, ref_batch in enumerate(ref_loader):
                     peptides, labels = ref_batch
                     if torch.is_tensor(peptides):1000 
                     projections, embeddings = model(peptides)
-                    ref_embs.append(projections.detach())
+                    ref_embs.append(embeddings.detach())
+                    ref_proj.append(projections.detach())
                     ref_labels.append(labels.detach())
                 ref_embs = torch.cat(ref_embs, dim=0)
+                ref_proj = torch.cat(ref_proj, dim=0)
                 ref_labels = torch.cat(ref_labels)            
                 
                 val_embs = val_embs / val_embs.norm(dim=1)[:, None]
+                val_proj = val_proj / val_proj.norm(dim=1)[:, None]
                 ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
-                similarity = torch.mm(val_embs, ref_embs.transpose(0,1)).cpu()
+                ref_proj = ref_proj / ref_proj.norm(dim=1)[:, None]
+                emb_similarity = torch.mm(val_embs, ref_embs.transpose(0,1)).cpu()
+                proj_similarity = torch.mm(val_proj, ref_proj.transpose(0,1)).cpu()
                 
                 val_classification_metrics = {}
                 
@@ -179,37 +186,32 @@ def train(config=None, init_wandb=True):
                 
                 
                 MAX_K = 11
-                vals, idxs = torch.topk(similarity, MAX_K, dim=1)
-                for K in [5, 11]:
-                    k_idxs = idxs[:, :K]
-                    knn_classes = ref_labels[k_idxs]
-                    pred_median_classes, median_idxs = torch.median(knn_classes, dim=1)
-                    # pred_mean_classes = torch.mean(knn_classes.float(), dim=1)
-
-                    
-                    k_median_classification_metrics = eval_classification_metrics(val_labels, pred_median_classes, 
+                vals, emb_idxs = torch.topk(emb_similarity, MAX_K, dim=1)
+                vals, proj_idxs = torch.topk(proj_similarity, MAX_K, dim=1)
+                for K in [11]:
+                    emb_k_idxs = emb_idxs[:, :K]
+                    emb_knn_classes = ref_labels[emb_k_idxs]
+                    pred_emb_classes, median_idxs = torch.median(emb_knn_classes, dim=1)
+                    k_median_classification_metrics = eval_classification_metrics(val_labels, pred_emb_classes, 
                                                                          is_logit=False, 
                                                                          threshold=0.5)
-                    k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
-                    
-                    
-                    # k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_mean_classes, 
-                    #                                                      is_logit=False, 
-                    #                                                      threshold=0.5)
-                    # k_mean_classification_metrics = {"K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
-                    
+                    k_median_classification_metrics = {"val_emb_KNN/K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
                     val_classification_metrics.update(k_median_classification_metrics)
-                    # val_classification_metrics.update(k_mean_classification_metrics)
                     
-                    
-                val_classification_metrics = {"val_KNN_class/"+k: v for k, v in val_classification_metrics.items()}
-            
+                    proj_k_idxs = proj_idxs[:, :K]
+                    proj_knn_classes = ref_labels[proj_k_idxs]
+                    pred_proj_classes, median_idxs = torch.median(proj_knn_classes, dim=1)
+                    k_median_classification_metrics = eval_classification_metrics(val_labels, pred_proj_classes, 
+                                                                         is_logit=False, 
+                                                                         threshold=0.5)
+                    k_median_classification_metrics = {"val_proj_KNN/K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
+                    val_classification_metrics.update(k_median_classification_metrics)
                 
-                epoch_val_metric = val_classification_metrics["val_KNN_class/K_5_median/MCC"] 
+                epoch_val_metric = val_classification_metrics["val_emb_KNN/K_11_median/MCC"] 
                 if epoch_val_metric>best_val_metric:
                     best_val_metric = epoch_val_metric
                     best_metric_iter = n_iter
-                    # torch.save(model.state_dict(), checkpoint_path)
+                    torch.save(model.state_dict(), checkpoint_path)
                     
                 log_results = True       
                 model.train()
@@ -221,10 +223,8 @@ def train(config=None, init_wandb=True):
                 
                 
                 current_lr = scheduler.get_last_lr()[0]
-                # val_train_difference = avg_val_logs["val/triplet_loss"] - avg_train_logs["train/triplet_loss"]
                 logs = {"learning_rate": current_lr, 
                         "accumulated_batch": n_update}
-                        # "val_train_difference": val_train_difference}
                 
                 logs.update(avg_train_logs)
                 logs.update(val_classification_metrics)
@@ -236,10 +236,89 @@ def train(config=None, init_wandb=True):
                     print("Val metric not improving, stopping training..\n\n")
                     break
                 
-        # train_dset.refresh_data()
-        
-        
+    
     pbar.close()
+    
+    print(os.path.exists(checkpoint_path))
+    print(f"\nLoading state dict from {checkpoint_path}\n\n")
+    model.load_state_dict(torch.load(checkpoint_path))
+    model.eval()
+    
+    print("Testing model..")
+    test_embs = []
+    test_labels = []
+    for ix, test_batch in enumerate(test_loader):
+        peptides, labels = test_batch
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
+        labels = labels.to(device)               
+        projections, embeddings = model(peptides)
+        test_embs.append(projections.detach())
+        test_labels.append(labels.detach())
+        
+    test_embs = torch.cat(test_embs, dim=0)
+    test_labels = torch.cat(test_labels)
+    
+    
+    
+    ref_embs = []
+    ref_labels = []
+    for ix, ref_batch in enumerate(ref_loader):
+        peptides, labels = ref_batch
+        if torch.is_tensor(peptides):1000 
+        projections, embeddings = model(peptides)
+        ref_embs.append(projections.detach())
+        ref_labels.append(labels.detach())
+    ref_embs = torch.cat(ref_embs, dim=0)
+    ref_labels = torch.cat(ref_labels)            
+    
+    test_embs = test_embs / test_embs.norm(dim=1)[:, None]
+    ref_embs = ref_embs / ref_embs.norm(dim=1)[:, None]
+    similarity = torch.mm(test_embs, ref_embs.transpose(0,1)).cpu()
+    
+    test_classification_metrics = {}
+    
+    test_labels = ((test_labels+1)/2).cpu()
+    ref_labels = ((ref_labels+1)/2).cpu()
+    
+    vals, idxs = torch.topk(similarity, MAX_K, dim=1)
+    for K in [11]:
+        k_idxs = idxs[:, :K]
+        knn_classes = ref_labels[k_idxs]
+        pred_median_classes, median_idxs = torch.median(knn_classes, dim=1)
+        k_median_classification_metrics = eval_classification_metrics(test_labels, pred_median_classes, 
+                                                                is_logit=False, 
+                                                                threshold=0.5)
+        k_median_classification_metrics = {"K_{}_median/".format(K)+k: v for k, v in k_median_classification_metrics.items()}
+        
+        test_classification_metrics.update(k_median_classification_metrics)
+        
+    test_classification_metrics = {"test_KNN_class/"+k: v for k, v in test_classification_metrics.items()}
+    for k, v in test_classification_metrics.items():
+        wandb.run.summary[k] = v
+        
+        
+    print("Evaluating Cosine Centroid for Human Peptides")
+    p_dset = PreTokenized_HumanPeptidesDataset(config["hdf5_dataset"], test_run=config["test_run"])
+    p_loader = DataLoader(p_dset, batch_size=config["batch_size"], drop_last=False)
+    
+    ref_human_peptides_vector = None
+    n_peptides = len(p_dset)
+    for ix, peptides in tqdm(enumerate(p_loader)):
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
+        projections, embeddings = model(peptides)
+        
+        embeddings = embeddings / embeddings.norm(dim=1)[:, None]
+        if ref_human_peptides_vector is None:
+            ref_human_peptides_vector = torch.sum(embeddings.detach(), dim=0)
+        else:
+            ref_human_peptides_vector += torch.sum(embeddings.detach(), dim=0)
+    ref_human_peptides_vector /= n_peptides
+    ref_human_peptides_vector = ref_human_peptides_vector / ref_human_peptides_vector.norm()
+    model.human_peptides_cosine_centroid = ref_human_peptides_vector
+    torch.save(model.state_dict(), checkpoint_path)
+    
     print("Training complete!")
 
 
@@ -253,8 +332,8 @@ def train(config=None, init_wandb=True):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--experiment_name", type=str, default="gradient_check")
-    parser.add_argument("--experiment_group", type=str, default="triplet_loss_embedder")
+    parser.add_argument("--experiment_name", type=str, default="devel")
+    parser.add_argument("--experiment_group", type=str, default="cmt_embedder")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     
     parser.add_argument("--hdf5_dataset", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5")
@@ -270,9 +349,9 @@ if __name__=="__main__":
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--accumulate_batches", type=int, default=4)
     
-    parser.add_argument("--val_size", type=int, default=5000)
-    parser.add_argument("--ref_size", type=int, default=10000)
-    parser.add_argument("--gen_size", type=int, default=100000)
+    parser.add_argument("--val_size", type=int, default=256)
+    parser.add_argument("--test_size", type=int, default=256)
+    parser.add_argument("--ref_size", type=int, default=256)
     
     parser.add_argument("--early_stopping", type=bool, default=True)
     parser.add_argument("--test_run", type=bool, default=True)
