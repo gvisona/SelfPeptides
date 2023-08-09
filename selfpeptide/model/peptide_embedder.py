@@ -33,17 +33,7 @@ class PeptideEmbedder(nn.Module):
         self.pooling.to(device)
         
         self.fn = nn.Linear(config["embedding_dim"], config["embedding_dim"])
-        self.apply(self._init_weights)
-        
-        
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
-            if module.bias is not None:
-                module.bias.data.normal_(mean=0.0, std=0.01)
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.normal_(mean=0.0, std=0.01)
-            module.weight.data.normal_(mean=1.0, std=0.01)
+
 
     def forward(self, X):
         input_ids, padding_mask = self.tokenizer(X)
@@ -77,7 +67,8 @@ class SelfPeptideEmbedder_Hinge(nn.Module):
                                         nn.ReLU(),
             nn.Linear(config["classifier_hidden_dim"], 1), 
             nn.Tanh())
-        self.apply(self._init_weights)
+        
+        self.classifier.apply(self._init_weights)
         
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

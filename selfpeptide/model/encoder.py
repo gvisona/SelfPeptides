@@ -64,6 +64,17 @@ class TEncoderLayer(nn.Module):
                                           nn.Linear(config["transf_hidden_dim"], config["embedding_dim"]))
         self.dropout2 = nn.Dropout(config["dropout_p"])
         self.res_norm2 = ResNorm(config["embedding_dim"])
+        
+        self.feed_forward.apply(self._init_weights)
+        
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            if module.bias is not None:
+                module.bias.data.normal_(mean=0.0, std=0.01)
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.normal_(mean=0.0, std=0.01)
+            module.weight.data.normal_(mean=1.0, std=0.01)
     
     def forward(self, X, padding_mask):
         multihead_output, attn_weights = self.multihead_attention(X, X, X, padding_mask)

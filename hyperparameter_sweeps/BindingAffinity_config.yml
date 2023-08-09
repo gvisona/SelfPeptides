@@ -16,9 +16,7 @@ parameters:
   n_attention_layers:
     value: 2
   accumulate_batches:
-    values: 
-    - 64
-    - 128
+    value: 64
   batch_size:
     value: 16
   binding_affinity_df:
@@ -28,13 +26,11 @@ parameters:
   experiment_group:
     value: DHLAP_binding_affinity_training
   experiment_name:
-    value: BA_model_training_preAA
-  lr:
-    value: 0.00015839092549681442
+    value: BA_model_training_init
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-3
-    min: 5e-7
+    max: 5.0e-4
+    min: 5e-5
   momentum:
     value: 0.9
   nesterov_momentum:
@@ -76,6 +72,6 @@ parameters:
   patience:
     value: 200
   pretrained_aa_embeddings:
-    value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy"
+    value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
   hla_repr:
     value: "Allele Pseudo-sequence"

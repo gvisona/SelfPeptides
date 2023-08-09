@@ -305,8 +305,8 @@ if __name__=="__main__":
     parser.add_argument("--binding_affinity_df", type=str, 
                         default="/home/gvisona/Projects/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv")    
     parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat")
-    parser.add_argument("--pretrained_aa_embeddings", type=str,
-                        default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy")
+    # parser.add_argument("--pretrained_aa_embeddings", type=str,
+    #                     default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy")
 
     parser.add_argument("--max_updates", type=int, default=5)
     parser.add_argument("--patience", type=int, default=1000)
