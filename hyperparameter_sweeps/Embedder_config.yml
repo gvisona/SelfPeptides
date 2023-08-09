@@ -14,17 +14,16 @@ parameters:
   PMA_ln:
     value: True
   num_heads:
-    values: 
-    - 1
-    - 2
+    values:
     - 4
+    - 8
   transf_hidden_dim:
     value: 2048
   n_attention_layers:
     values: 
+    - 1
     - 2
     - 4
-    - 8
   accumulate_batches:
     value: 1
   batch_size:
@@ -38,7 +37,7 @@ parameters:
   lr:
     distribution: log_uniform_values 
     max: 1.0e-6
-    min: 1e-8
+    min: 1.0e-7
   momentum:
     value: 0.8
   nesterov_momentum:
@@ -48,11 +47,7 @@ parameters:
   min_frac:
     value: 0.1
   dropout_p:
-    values: 
-    - 0.0
-    - 0.05
-    - 0.1
-    - 0.2 
+    value: 0.05
   project_folder:
     value: /fast/gvisona/SelfPeptides
   ramp_up:
@@ -63,13 +58,15 @@ parameters:
     max: 100000
   val_size:
     value: 5000
+  test_size:
+    value: 5000
   ref_size:
     value: 10000
   validate_every_n_updates:
     value: 50000
   weight_decay:
     values: 
-    - 0.000001
+    - 0.0001
     - 0.00001
   early_stopping:
     value: True
@@ -82,10 +79,6 @@ parameters:
   margin:
     value: 0.6
   loss_s:
-    values: 
-    - 1.0
-    - 5.0
-    - 10.0
-    - 20.0
+    value: 20.0
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy"
