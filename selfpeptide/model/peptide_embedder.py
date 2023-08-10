@@ -96,7 +96,7 @@ class SelfPeptideEmbedder_withProjHead(nn.Module):
                                         nn.ReLU(),
             nn.Linear(config["projection_hidden_dim"], config["projection_dim"]))
         
-        self.register_buffer("human_peptides_cosine_centroid", torch.zeros(config["embedding_dim"]).float())
+        self.register_buffer("human_peptides_cosine_centroid", torch.zeros(config["projection_dim"]).float())
 
 
         
