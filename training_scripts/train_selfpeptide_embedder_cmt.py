@@ -325,8 +325,8 @@ def train(config=None, init_wandb=True):
         else:
             ref_human_peptides_vector += torch.sum(projections.detach(), dim=0)
     ref_human_peptides_vector /= n_peptides
-    ref_human_peptides_vector = ref_human_peptides_vector / \
-        ref_human_peptides_vector.norm()
+    ref_human_peptides_vector = (ref_human_peptides_vector / 
+                                ref_human_peptides_vector.norm())
     model.human_peptides_cosine_centroid = ref_human_peptides_vector
     torch.save(model.state_dict(), checkpoint_path)
 
