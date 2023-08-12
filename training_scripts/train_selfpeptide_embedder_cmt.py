@@ -54,7 +54,7 @@ def train(config=None, init_wandb=True):
     val_dset = PreSplit_Self_NonSelf_PeptideDataset(*val_set)
     test_dset = PreSplit_Self_NonSelf_PeptideDataset(*test_set)
     ref_dset = PreSplit_Self_NonSelf_PeptideDataset(*ref_set)
-    train_dset = PreSplit_Self_NonSelf_PeptideDataset(*val_set)
+    train_dset = PreSplit_Self_NonSelf_PeptideDataset(*train_set)
 
     train_loader = DataLoader(
         train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)

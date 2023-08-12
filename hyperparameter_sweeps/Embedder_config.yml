@@ -33,7 +33,7 @@ parameters:
   experiment_group:
     value: SP_Embedder
   experiment_name:
-    value: Embeddings_CMT_meanKNN
+    value: Embeddings_CMT_train
   lr:
     distribution: log_uniform_values 
     max: 1.0e-5
