@@ -37,7 +37,7 @@ def lr_schedule(t, min_frac=0.001, total_iters=100, delay=0.0, ramp_up=0.3, cool
     assert cooldown_steps + ramp_up_steps + delay_steps <= total_iters
         
     
-    if t<=delay_steps:
+    if t<delay_steps:
         return 0
     elif t<=delay_steps+ramp_up_steps:
         return min_frac + (t-delay_steps)*(1-min_frac)/ramp_up_steps
@@ -45,6 +45,30 @@ def lr_schedule(t, min_frac=0.001, total_iters=100, delay=0.0, ramp_up=0.3, cool
     elif t<=delay_steps+ramp_up_steps+cooldown_steps:
         return min_frac+0.5*(1-min_frac)*(1+np.cos(((t-ramp_up_steps-delay_steps)/cooldown_steps)*math.pi))
     return min_frac
+
+
+
+def warmup_constant_lr_schedule(t, min_frac=0.001, total_iters=100, delay=0.0, ramp_up=0.3):
+    # print("LR SCHEDULER ARGUMENT: {}".format(t))
+    assert isinstance(total_iters, int)
+    if isinstance(ramp_up, float):
+        ramp_up_steps = total_iters*ramp_up
+    elif isinstance(ramp_up, int):
+        assert ramp_up<total_iters
+        ramp_up_steps = ramp_up
+    
+    if isinstance(delay, float):
+        delay_steps = total_iters*delay
+    elif isinstance(delay, int):
+        assert delay<total_iters
+        delay_steps = delay
+            
+    
+    if t<delay_steps:
+        return 0
+    elif t<=delay_steps+ramp_up_steps:
+        return min_frac + (t-delay_steps)*(1-min_frac)/ramp_up_steps
+    return 1.0
 
 
 

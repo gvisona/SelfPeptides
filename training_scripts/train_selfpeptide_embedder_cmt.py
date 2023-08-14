@@ -12,7 +12,7 @@ import math
 
 
 from selfpeptide.utils.data_utils import PreSplit_Self_NonSelf_PeptideDataset, split_pretokenized_data, PreTokenized_HumanPeptidesDataset
-from selfpeptide.utils.training_utils import lr_schedule, eval_classification_metrics, CustomCMT_AllTriplets_Loss
+from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule, eval_classification_metrics, CustomCMT_AllTriplets_Loss
 from selfpeptide.model.peptide_embedder import SelfPeptideEmbedder_withProjHead
 
 
@@ -82,8 +82,11 @@ def train(config=None, init_wandb=True):
                                     "nesterov_momentum", False),
                                 weight_decay=config['weight_decay'])
 
-    def lr_lambda(s): return lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
-                                         ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    # def lr_lambda(s): return lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
+    #                                      ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    def lr_lambda(s): return warmup_constant_lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
+                                         ramp_up=config['ramp_up'])
+    
     # lr_lambda = lambda s: 1.0
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
@@ -91,7 +94,6 @@ def train(config=None, init_wandb=True):
     loss_function = CustomCMT_AllTriplets_Loss(
         s=config.get("loss_s", 1.0), m=margin)
 
-    gen_train = iter(train_loader)
     best_val_metric = 0.0
     best_metric_iter = 0
     n_iters_per_val_cycle = config["accumulate_batches"] * \
@@ -103,11 +105,13 @@ def train(config=None, init_wandb=True):
 
     # wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
 
-    pbar = tqdm(range(config["max_updates"]))
+    pbar = tqdm(total=config["max_updates"])
     n_iter = 0
     while n_iter < max_iters:
         for batch_ix, train_batch in enumerate(train_loader):
             n_iter += 1
+            if n_iter>max_iters:
+                break
             peptides, labels = train_batch
             if torch.is_tensor(peptides):
                 peptides = peptides.to(device)
@@ -124,6 +128,7 @@ def train(config=None, init_wandb=True):
             loss.backward()
 
             if n_iter % config['accumulate_batches'] == 0:
+                # print("UPDATE")
                 optimizer.step()
                 optimizer.zero_grad()
                 scheduler.step()
@@ -155,7 +160,7 @@ def train(config=None, init_wandb=True):
                 for ix, ref_batch in enumerate(ref_loader):
                     peptides, labels = ref_batch
                     if torch.is_tensor(peptides):
-                        1000
+                        peptides = peptides.to(device)
                     projections, embeddings = model(peptides)
                     ref_proj.append(projections.detach())
                     ref_labels.append(labels.detach())
@@ -176,14 +181,14 @@ def train(config=None, init_wandb=True):
                 vals, proj_idxs = torch.topk(proj_similarity, MAX_K, dim=1)
                 for K in [11]:
                     proj_k_idxs = proj_idxs[:, :K]
-                    proj_k_distances = 1.0 - vals[:, :K]
-                    knn_weights = (proj_k_distances[:, -1:] - proj_k_distances)/(
-                        torch.clamp(proj_k_distances[:, -1] - proj_k_distances[:, 0], min=1e-8)[:, None])
-                    knn_weights = knn_weights / knn_weights.sum(dim=1)[:, None]
+                    # proj_k_distances = 1.0 - vals[:, :K]
+                    # knn_weights = (proj_k_distances[:, -1:] - proj_k_distances)/(
+                    #     torch.clamp(proj_k_distances[:, -1] - proj_k_distances[:, 0], min=1e-8)[:, None])
+                    # knn_weights = knn_weights / knn_weights.sum(dim=1)[:, None]
                     proj_knn_classes = ref_labels[proj_k_idxs]
                     pred_proj_labels = torch.mean(proj_knn_classes, dim=1)
-                    pred_weighted_proj_labels = (
-                        knn_weights * proj_knn_classes).sum(dim=1)
+                    # pred_weighted_proj_labels = (
+                    #     knn_weights * proj_knn_classes).sum(dim=1)
                     k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_proj_labels,
                                                                                 is_logit=False,
                                                                                 threshold=0.5)
@@ -192,17 +197,16 @@ def train(config=None, init_wandb=True):
                     val_classification_metrics.update(
                         k_mean_classification_metrics)
 
-                    weighted_k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_weighted_proj_labels,
-                                                                                         is_logit=False,
-                                                                                         threshold=0.5)
-                    weighted_k_mean_classification_metrics = {"val_proj_weighted_KNN/K_{}_mean/".format(
-                        K)+k: v for k, v in weighted_k_mean_classification_metrics.items()}
-                    val_classification_metrics.update(
-                        weighted_k_mean_classification_metrics)
+                    # weighted_k_mean_classification_metrics = eval_classification_metrics(val_labels, pred_weighted_proj_labels,
+                    #                                                                      is_logit=False,
+                    #                                                                      threshold=0.5)
+                    # weighted_k_mean_classification_metrics = {"val_proj_weighted_KNN/K_{}_mean/".format(
+                    #     K)+k: v for k, v in weighted_k_mean_classification_metrics.items()}
+                    # val_classification_metrics.update(
+                    #     weighted_k_mean_classification_metrics)
 
-                epoch_val_metric = max(val_classification_metrics["val_proj_KNN/K_11_mean/MCC"],
-                                       val_classification_metrics["val_proj_weighted_KNN/K_11_mean/MCC"]
-                                       )
+                epoch_val_metric = val_classification_metrics["val_proj_KNN/K_11_mean/MCC"]
+                
                 if epoch_val_metric > best_val_metric:
                     best_val_metric = epoch_val_metric
                     best_metric_iter = n_iter
@@ -278,13 +282,13 @@ def train(config=None, init_wandb=True):
     for K in [11]:
         k_idxs = idxs[:, :K]
         proj_k_distances = 1.0 - vals[:, :K]
-        knn_weights = (proj_k_distances[:, -1:] - proj_k_distances)/(
-            torch.clamp(proj_k_distances[:, -1] - proj_k_distances[:, 0], min=1e-8)[:, None])
-        knn_weights = knn_weights / knn_weights.sum(dim=1)[:, None]
+        # knn_weights = (proj_k_distances[:, -1:] - proj_k_distances)/(
+        #     torch.clamp(proj_k_distances[:, -1] - proj_k_distances[:, 0], min=1e-8)[:, None])
+        # knn_weights = knn_weights / knn_weights.sum(dim=1)[:, None]
         knn_classes = ref_labels[k_idxs]
         test_pred_labels = torch.mean(knn_classes, dim=1)
-        test_weighted_proj_labels = (
-                        knn_weights * knn_classes).sum(dim=1)
+        # test_weighted_proj_labels = (
+        #                 knn_weights * knn_classes).sum(dim=1)
         k_mean_classification_metrics = eval_classification_metrics(test_labels, test_pred_labels,
                                                                     is_logit=False,
                                                                     threshold=0.5)
@@ -293,13 +297,13 @@ def train(config=None, init_wandb=True):
 
         test_classification_metrics.update(k_mean_classification_metrics)
         
-        weighted_k_mean_classification_metrics = eval_classification_metrics(test_labels, test_weighted_proj_labels,
-                                                                    is_logit=False,
-                                                                    threshold=0.5)
-        weighted_k_mean_classification_metrics = {
-            "weighted_K_{}_mean/".format(K)+k: v for k, v in weighted_k_mean_classification_metrics.items()}
+        # weighted_k_mean_classification_metrics = eval_classification_metrics(test_labels, test_weighted_proj_labels,
+        #                                                             is_logit=False,
+        #                                                             threshold=0.5)
+        # weighted_k_mean_classification_metrics = {
+        #     "weighted_K_{}_mean/".format(K)+k: v for k, v in weighted_k_mean_classification_metrics.items()}
 
-        test_classification_metrics.update(weighted_k_mean_classification_metrics)
+        # test_classification_metrics.update(weighted_k_mean_classification_metrics)
 
     test_classification_metrics = {
         "test_KNN_class/"+k: v for k, v in test_classification_metrics.items()}
