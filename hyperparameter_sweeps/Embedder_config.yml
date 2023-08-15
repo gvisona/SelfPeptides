@@ -31,15 +31,11 @@ parameters:
     value: Embeddings_CMT_lr_sweep
   lr:
     values:
+    - 1.0e-3
+    - 3.0e-4
     - 1.0e-4
     - 3.3e-5
     - 1.0e-5
-    - 3.3e-6
-    - 1.0e-6
-    - 3.3e-7
-    - 1.0e-7
-    - 3.3e-8
-    - 1.0e-8
   momentum:
     values: 
     - 0.9
@@ -47,7 +43,7 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    value: 1000000
+    value: 10000000
   min_frac:
     value: 0.1
   dropout_p:
