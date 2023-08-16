@@ -17,8 +17,8 @@ ab=${acc_batches[idx]}
 
 
 python3 /home/gvisona/SelfPeptides/training_scripts/train_selfpeptide_embedder_cmt.py  \
---seed $1 \
---accumulate_batches $ab --lr  $lr \
+--seed "$1" \
+--accumulate_batches "$ab" --lr  "$lr" \
 --weight_decay $wd \
 --val_size 10000 --test_size 10000 --ref_size 10000 \
 --validate_every_n_updates 100000 \
