@@ -22,7 +22,7 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_selfpeptide_embedder_c
 --weight_decay $wd \
 --val_size 10000 --test_size 10000 --ref_size 10000 \
 --validate_every_n_updates 100000 \
---max_updates 20000000 --dropout_p 0.0 \ 
+--max_updates 20000000 --dropout_p 0.0 \
 --ramp_up 0.3 --min_frac 0.1 --cool_down 0.6  \
 --momentum 0.9 --nesterov_momentum \
 --embedding_dim 512 --projection_hidden_dim 2048 --projection_dim 32 \
