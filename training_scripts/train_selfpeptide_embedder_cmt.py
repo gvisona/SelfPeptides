@@ -401,7 +401,9 @@ if __name__ == "__main__":
     parser.add_argument("--early_stopping", action=argparse.BooleanOptionalAction)
     parser.add_argument("--test_run", action=argparse.BooleanOptionalAction)
 
+    parser.add_argument("--reg_weight", type=float, default=1e-4)
     parser.add_argument("--margin", type=float, default=0.7)
+    parser.add_argument("--loss_s", type=float, default=0.7)
     parser.add_argument("--lr", type=float, default=1.0e-5)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.9)
