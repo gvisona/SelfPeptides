@@ -14,8 +14,8 @@ requirements=TARGET.CUDAGlobalMemoryMb>25000
 # periodic_hold_subcode = 1
 # periodic_release = ( (JobStatus =?= 5) && (HoldReasonCode =?= 3) && (HoldReasonSubCode =?= 1) )
 
-+MaxRunningPrice = 1000
-+RunningPriceExceededAction = "kill"
++MaxRunningPrice = 300
++RunningPriceExceededAction = "restart"
 queue 6
 
 # condor_submit_bid 80 -i -append 'request_memory=128GB' -append 'request_gpus=1' -append 'requirements=TARGET.CUDACapability>=3.7' -append 'requirements=TARGET.CUDAGlobalMemoryMb>10000'
