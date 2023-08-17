@@ -83,13 +83,13 @@ def train(config=None, init_wandb=True):
     train_dset = PreSplit_Self_NonSelf_PeptideDataset(*train_set)
 
     train_loader = DataLoader(
-        train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True)
+        train_dset, batch_size=config["batch_size"], shuffle=True, drop_last=True, num_workers=config["num_workers"], pin_memory=True)
     val_loader = DataLoader(
-        val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+        val_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False, num_workers=config["num_workers"], pin_memory=True)
     test_loader = DataLoader(
-        test_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+        test_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False, num_workers=config["num_workers"], pin_memory=True)
     ref_loader = DataLoader(
-        ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False)
+        ref_dset, batch_size=config["batch_size"], shuffle=False, drop_last=False, num_workers=config["num_workers"], pin_memory=True)
 
     model = SelfPeptideEmbedder_withProjHead(config, device)
     model.to(device)
@@ -397,6 +397,7 @@ if __name__ == "__main__":
     parser.add_argument("--val_size", type=int, default=256)
     parser.add_argument("--test_size", type=int, default=256)
     parser.add_argument("--ref_size", type=int, default=256)
+    parser.add_argument("--num_workers", type=int, default=4)
 
     parser.add_argument("--early_stopping", action=argparse.BooleanOptionalAction)
     parser.add_argument("--test_run", action=argparse.BooleanOptionalAction)
