@@ -7,20 +7,28 @@ module load cuda/11.7
 
 idx=$1
 
-learning_rates=(0.00003 0.00048 0.00192 0.00003 0.00048 0.00192)
-weight_decays=(0.000001 0.000001 0.000001 0.00001 0.00001 0.00001)
-acc_batches=(1 16 64 1 16 64)
-val_every=(100000 10000 50000 100000 10000 50000)
-max_upd=(20000000 2000000 1000000 20000000 2000000 1000000)
+# learning_rates=(0.00003 0.00048 0.00192 0.00003 0.00048 0.00192)
+# weight_decays=(0.000001 0.000001 0.000001 0.00001 0.00001 0.00001)
+# acc_batches=(1 16 64 1 16 64)
+# val_every=(100000 10000 50000 100000 10000 50000)
+# max_upd=(20000000 2000000 1000000 20000000 2000000 1000000)
 
-lr=${learning_rates[@]:${idx}:1}
-wd=${weight_decays[@]:${idx}:1}
-ab=${acc_batches[@]:${idx}:1}
-ve=${val_every[@]:${idx}:1}
-mu=${max_upd[@]:${idx}:1}
+# lr=${learning_rates[@]:${idx}:1}
+# wd=${weight_decays[@]:${idx}:1}
+# ab=${acc_batches[@]:${idx}:1}
+# ve=${val_every[@]:${idx}:1}
+# mu=${max_upd[@]:${idx}:1}
+
+lr=0.00003
+wd=0.00001
+ab=1
+ve=100000
+mu=20000000
+sd=3
+
 
 python3 /home/gvisona/SelfPeptides/training_scripts/train_selfpeptide_embedder_cmt.py  \
---seed "$1" \
+--seed "$sd" \
 --accumulate_batches "$ab" --lr  "$lr" \
 --weight_decay "$wd" \
 --val_size 10000 --test_size 10000 --ref_size 10000 \
