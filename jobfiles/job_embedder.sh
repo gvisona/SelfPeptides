@@ -38,7 +38,7 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_selfpeptide_embedder_c
 --momentum 0.9 --nesterov_momentum \
 --embedding_dim 512 --projection_hidden_dim 2048 --projection_dim 32 \
 --PMA_num_heads 1 --PMA_ln --num_heads 4 --transf_hidden_dim 2048 --n_attention_layers 2 \
---batch_size 32 --num_workers 4 \
+--batch_size 32 --num_workers 1 \
 --experiment_group "SP_Embedder" --experiment_name "Embeddings_CMT_batch_acc_lr" \
 --project_folder "/fast/gvisona/SelfPeptides" \
 --hdf5_dataset "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5" \
