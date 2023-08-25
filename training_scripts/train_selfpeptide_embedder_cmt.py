@@ -32,8 +32,10 @@ def train(config=None, init_wandb=True):
 
 
     run_name = wandb.run.name
+    if config["run_number"] is None:
+        config["run_number"] = config["seed"]
     if run_name is None or len(run_name) < 1 or not config["wandb_sweep"]:
-        run_name = str(config["seed"])
+        run_name = str(config["run_number"])
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -164,6 +166,8 @@ def train(config=None, init_wandb=True):
 
             projections, embeddings = model(peptides)
             loss, train_loss_logs = loss_function(projections, labels)
+            
+            loss /= config['accumulate_batches']
 
             if avg_train_logs is None:
                 avg_train_logs = train_loss_logs.copy()
@@ -376,6 +380,7 @@ def train(config=None, init_wandb=True):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--run_number", type=int)
     parser.add_argument("--experiment_name", type=str, default="devel")
     parser.add_argument("--experiment_group", type=str, default="cmt_embedder")
     parser.add_argument("--project_folder", type=str,
