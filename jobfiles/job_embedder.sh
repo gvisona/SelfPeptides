@@ -43,5 +43,5 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_selfpeptide_embedder_c
 --project_folder "/fast/gvisona/SelfPeptides" \
 --hdf5_dataset "/home/gvisona/SelfPeptides/processed_data/Self_nonSelf/pre_tokenized_peptides_dataset.hdf5" \
 --pretrained_aa_embeddings "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy" \
---init_checkpoint "/fast/gvisona/SelfPeptides/outputs/SP_Embedder/Embeddings_CMT_flatLR/3/checkpoints/005_checkpoint.pt" \ 
+--init_checkpoint "/fast/gvisona/SelfPeptides/outputs/SP_Embedder/Embeddings_CMT_flatLR/3/checkpoints/005_checkpoint.pt" \
 --reg_weight 0.0001 --margin 0.6 --loss_s 10.0 
