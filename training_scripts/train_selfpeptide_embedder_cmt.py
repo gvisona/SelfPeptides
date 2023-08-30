@@ -282,97 +282,97 @@ def train(config=None, init_wandb=True):
     model.load_state_dict(torch.load(checkpoint_path))
     model.eval()
 
-    # print("Testing model..")
-    # test_proj = []
-    # test_labels = []
-    # for ix, test_batch in enumerate(test_loader):
-    #     peptides, labels = test_batch
-    #     if torch.is_tensor(peptides):
-    #         peptides = peptides.to(device)
-    #     labels = labels.to(device)
-    #     projections, embeddings = model(peptides)
-    #     test_proj.append(projections.detach())
-    #     test_labels.append(labels.detach())
+    print("Testing model..")
+    test_proj = []
+    test_labels = []
+    for ix, test_batch in enumerate(test_loader):
+        peptides, labels = test_batch
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
+        labels = labels.to(device)
+        projections, embeddings = model(peptides)
+        test_proj.append(projections.detach())
+        test_labels.append(labels.detach())
 
-    # test_proj = torch.cat(test_proj, dim=0)
-    # test_labels = torch.cat(test_labels)
+    test_proj = torch.cat(test_proj, dim=0)
+    test_labels = torch.cat(test_labels)
 
-    # ref_proj = []
-    # ref_labels = []
-    # for ix, ref_batch in enumerate(ref_loader):
-    #     peptides, labels = ref_batch
-    #     if torch.is_tensor(peptides):
-    #         peptides = peptides.to(device)
-    #     projections, embeddings = model(peptides)
-    #     ref_proj.append(projections.detach())
-    #     ref_labels.append(labels.detach())
-    # ref_proj = torch.cat(ref_proj, dim=0)
-    # ref_labels = torch.cat(ref_labels)
+    ref_proj = []
+    ref_labels = []
+    for ix, ref_batch in enumerate(ref_loader):
+        peptides, labels = ref_batch
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
+        projections, embeddings = model(peptides)
+        ref_proj.append(projections.detach())
+        ref_labels.append(labels.detach())
+    ref_proj = torch.cat(ref_proj, dim=0)
+    ref_labels = torch.cat(ref_labels)
 
-    # test_proj = test_proj / test_proj.norm(dim=1)[:, None]
-    # ref_proj = ref_proj / ref_proj.norm(dim=1)[:, None]
-    # similarity = torch.mm(test_proj, ref_proj.transpose(0, 1)).cpu()
+    test_proj = test_proj / test_proj.norm(dim=1)[:, None]
+    ref_proj = ref_proj / ref_proj.norm(dim=1)[:, None]
+    similarity = torch.mm(test_proj, ref_proj.transpose(0, 1)).cpu()
 
-    # test_classification_metrics = {}
+    test_classification_metrics = {}
 
-    # test_labels = ((test_labels+1)/2).cpu()
-    # ref_labels = ((ref_labels+1)/2).cpu()
+    test_labels = ((test_labels+1)/2).cpu()
+    ref_labels = ((ref_labels+1)/2).cpu()
 
-    # vals, idxs = torch.topk(similarity, MAX_K, dim=1)
-    # for K in [11]:
-    #     k_idxs = idxs[:, :K]
-    #     proj_k_distances = 1.0 - vals[:, :K]
-    #     # knn_weights = (proj_k_distances[:, -1:] - proj_k_distances)/(
-    #     #     torch.clamp(proj_k_distances[:, -1] - proj_k_distances[:, 0], min=1e-8)[:, None])
-    #     # knn_weights = knn_weights / knn_weights.sum(dim=1)[:, None]
-    #     knn_classes = ref_labels[k_idxs]
-    #     test_pred_labels = torch.mean(knn_classes, dim=1)
-    #     # test_weighted_proj_labels = (
-    #     #                 knn_weights * knn_classes).sum(dim=1)
-    #     k_mean_classification_metrics = eval_classification_metrics(test_labels, test_pred_labels,
-    #                                                                 is_logit=False,
-    #                                                                 threshold=0.5)
-    #     k_mean_classification_metrics = {
-    #         "K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
+    vals, idxs = torch.topk(similarity, MAX_K, dim=1)
+    for K in [11]:
+        k_idxs = idxs[:, :K]
+        # proj_k_distances = 1.0 - vals[:, :K]
+        # knn_weights = (proj_k_distances[:, -1:] - proj_k_distances)/(
+        #     torch.clamp(proj_k_distances[:, -1] - proj_k_distances[:, 0], min=1e-8)[:, None])
+        # knn_weights = knn_weights / knn_weights.sum(dim=1)[:, None]
+        knn_classes = ref_labels[k_idxs]
+        test_pred_labels = torch.mean(knn_classes, dim=1)
+        # test_weighted_proj_labels = (
+        #                 knn_weights * knn_classes).sum(dim=1)
+        k_mean_classification_metrics = eval_classification_metrics(test_labels, test_pred_labels,
+                                                                    is_logit=False,
+                                                                    threshold=0.5)
+        k_mean_classification_metrics = {
+            "K_{}_mean/".format(K)+k: v for k, v in k_mean_classification_metrics.items()}
 
-    #     test_classification_metrics.update(k_mean_classification_metrics)
+        test_classification_metrics.update(k_mean_classification_metrics)
         
-    #     # weighted_k_mean_classification_metrics = eval_classification_metrics(test_labels, test_weighted_proj_labels,
-    #     #                                                             is_logit=False,
-    #     #                                                             threshold=0.5)
-    #     # weighted_k_mean_classification_metrics = {
-    #     #     "weighted_K_{}_mean/".format(K)+k: v for k, v in weighted_k_mean_classification_metrics.items()}
+        # weighted_k_mean_classification_metrics = eval_classification_metrics(test_labels, test_weighted_proj_labels,
+        #                                                             is_logit=False,
+        #                                                             threshold=0.5)
+        # weighted_k_mean_classification_metrics = {
+        #     "weighted_K_{}_mean/".format(K)+k: v for k, v in weighted_k_mean_classification_metrics.items()}
 
-    #     # test_classification_metrics.update(weighted_k_mean_classification_metrics)
+        # test_classification_metrics.update(weighted_k_mean_classification_metrics)
 
-    # test_classification_metrics = {
-    #     "test_KNN_class/"+k: v for k, v in test_classification_metrics.items()}
-    # for k, v in test_classification_metrics.items():
-    #     wandb.run.summary[k] = v
+    test_classification_metrics = {
+        "test_KNN_class/"+k: v for k, v in test_classification_metrics.items()}
+    for k, v in test_classification_metrics.items():
+        wandb.run.summary[k] = v
 
-    # print("Evaluating Cosine Centroid for Human Peptides")
-    # p_dset = PreTokenized_HumanPeptidesDataset(
-    #     config["hdf5_dataset"], test_run=config["test_run"])
-    # p_loader = DataLoader(
-    #     p_dset, batch_size=config["batch_size"], drop_last=False)
+    print("Evaluating Cosine Centroid for Human Peptides")
+    p_dset = PreTokenized_HumanPeptidesDataset(
+        config["hdf5_dataset"], test_run=config["test_run"])
+    p_loader = DataLoader(
+        p_dset, batch_size=config["batch_size"], drop_last=False)
 
-    # ref_human_peptides_vector = None
-    # n_peptides = len(p_dset)
-    # for ix, peptides in tqdm(enumerate(p_loader)):
-    #     if torch.is_tensor(peptides):
-    #         peptides = peptides.to(device)
-    #     projections, embeddings = model(peptides)
+    ref_human_peptides_vector = None
+    n_peptides = len(p_dset)
+    for ix, peptides in tqdm(enumerate(p_loader)):
+        if torch.is_tensor(peptides):
+            peptides = peptides.to(device)
+        projections, embeddings = model(peptides)
 
-    #     projections = projections / projections.norm(dim=1)[:, None]
-    #     if ref_human_peptides_vector is None:
-    #         ref_human_peptides_vector = torch.sum(projections.detach(), dim=0)
-    #     else:
-    #         ref_human_peptides_vector += torch.sum(projections.detach(), dim=0)
-    # ref_human_peptides_vector /= n_peptides
-    # ref_human_peptides_vector = (ref_human_peptides_vector / 
-    #                             ref_human_peptides_vector.norm())
-    # model.human_peptides_cosine_centroid = ref_human_peptides_vector
-    # torch.save(model.state_dict(), checkpoint_path)
+        projections = projections / projections.norm(dim=1)[:, None]
+        if ref_human_peptides_vector is None:
+            ref_human_peptides_vector = torch.sum(projections.detach(), dim=0)
+        else:
+            ref_human_peptides_vector += torch.sum(projections.detach(), dim=0)
+    ref_human_peptides_vector /= n_peptides
+    ref_human_peptides_vector = (ref_human_peptides_vector / 
+                                ref_human_peptides_vector.norm())
+    model.human_peptides_cosine_centroid = ref_human_peptides_vector
+    torch.save(model.state_dict(), checkpoint_path)
 
     print("Training complete!")
 
