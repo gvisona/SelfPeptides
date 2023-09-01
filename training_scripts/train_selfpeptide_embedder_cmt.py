@@ -11,6 +11,7 @@ from os.path import exists, join
 from tqdm import tqdm
 import math
 import json
+import sys
 
 from selfpeptide.utils.data_utils import PreSplit_Self_NonSelf_PeptideDataset, split_pretokenized_data, PreTokenized_HumanPeptidesDataset
 from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule, eval_classification_metrics, CustomCMT_AllTriplets_Loss
@@ -49,6 +50,11 @@ def train(config=None, init_wandb=True):
                          config['experiment_name'],
                          run_name)
     os.makedirs(output_folder, exist_ok=True)
+    
+    with open(join(output_folder, "config.json"), "w") as f:
+        json.dump(config, f)
+    sys.exit(0)
+    
     # checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
     checkpoints_folder = os.path.join(output_folder, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok=True)
