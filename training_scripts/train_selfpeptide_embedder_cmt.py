@@ -52,7 +52,7 @@ def train(config=None, init_wandb=True):
     os.makedirs(output_folder, exist_ok=True)
     
     with open(join(output_folder, "config.json"), "w") as f:
-        json.dump(config, f)
+        json.dump(dict(config), f)
     sys.exit(0)
     
     # checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
