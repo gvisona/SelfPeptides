@@ -11,7 +11,7 @@ lr=${learning_rates[@]:${idx}:1}
 
 
 idx=$1
-sd=$idx
+sd=90412
 lr=1.0
 wd=0.0001
 
@@ -31,7 +31,7 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_binding_model.py  \
 --experiment_group "Binding_model_masking" --experiment_name "BA_tune_devel" \
 --project_folder "/fast/gvisona/SelfPeptides" \
 --pretrained_aa_embeddings "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy" \
+--init_checkpoint "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt" \
 --binding_affinity_df "/home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv" \
 --pseudo_seq_file "/home/gvisona/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat" 
 # --cool_down 0.6
-# --init_checkpoint "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt" \
