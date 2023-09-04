@@ -35,13 +35,13 @@ class AA_Tokenizer(nn.Module):
             attention_mask = []
             aa_ids = []
             for s in seqs:
-                attention_mask.append([1 if aa!=self.padding_token else 0 for aa in s])
+                attention_mask.append([1 if aa==self.padding_token else 0 for aa in s]) # Mask is 1 for padding token, 0 otherwise
                 aa_ids.append([self.token2idx[aa] for aa in s])
-            attention_mask = torch.tensor(attention_mask).float().to(self.device) 
+            attention_mask = torch.tensor(attention_mask).bool().to(self.device) 
             aa_ids = torch.LongTensor(aa_ids).to(self.device) 
         elif torch.is_tensor(seqs):
             aa_ids = seqs.long().to(self.device)
-            attention_mask = (~torch.eq(aa_ids, self.token2idx[self.padding_token])).float().to(self.device) 
+            attention_mask = (torch.eq(aa_ids, self.token2idx[self.padding_token])).bool().to(self.device) 
         else:
             raise ValueError("AA_Tokenizer requires strings of amino acids or pre-tokenized tensors")
         
@@ -120,7 +120,7 @@ class TransformerEncoder(nn.Module):
         
     def forward(self, X, padding_mask=None):
         if padding_mask is None:
-            padding_mask = torch.ones_like(X).to(self.device)
+            padding_mask = torch.zeros_like(X).int().to(self.device)
             
         X = self.pos_encoding(X)
         X = self.dropout(X)

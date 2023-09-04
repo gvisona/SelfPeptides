@@ -138,8 +138,8 @@ class MAB_MaskedAttention(nn.Module):
         V_ = torch.cat(V.split(dim_split, 2), 0)
 
         if padding_mask is not None:
-            M = padding_mask.repeat(self.num_heads, 1).unsqueeze(1)
-            A = torch.softmax((Q_.bmm(K_.transpose(1,2)) - self.mask_val * (1-M))/math.sqrt(self.dim_V), 2)
+            M = padding_mask.int().repeat(self.num_heads, 1).unsqueeze(1)
+            A = torch.softmax((Q_.bmm(K_.transpose(1,2)) - self.mask_val * M)/math.sqrt(self.dim_V), 2)
         else:
             A = torch.softmax(Q_.bmm(K_.transpose(1,2))/math.sqrt(self.dim_V), 2)
         O = torch.cat((Q_ + A.bmm(V_)).split(Q.size(0), 0), 2)

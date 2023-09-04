@@ -73,5 +73,7 @@ parameters:
     value: 200
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
+  init_checkpoint:
+    value: "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt"
   hla_repr:
     value: "Allele Pseudo-sequence"

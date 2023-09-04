@@ -26,8 +26,10 @@ if __name__=="__main__":
     
     with open(os.path.join(project_folder, "hyperparameter_sweeps", "BindingAffinity_config.yml"), "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
+        
     config = {
         "seed": args.seed,
+        "run_number": args.seed,
         "experiment_name": sweep_config["parameters"]["experiment_name"]["value"]
     }
     

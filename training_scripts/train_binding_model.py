@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import argparse
 from argparse import ArgumentParser 
 import wandb
 import torch
@@ -8,10 +9,10 @@ from torch.utils.data import DataLoader
 import os
 from os.path import exists, join
 import json
-
 from tqdm import tqdm
 
-from selfpeptide.utils.training_utils import eval_classification_metrics, lr_schedule, get_class_weights, sigmoid
+import sys
+from selfpeptide.utils.training_utils import eval_classification_metrics, lr_schedule, warmup_constant_lr_schedule, get_class_weights, sigmoid
 from selfpeptide.model.binding_affinity_classifier import Peptide_HLA_BindingClassifier
 from selfpeptide.utils.data_utils import SequencesInteractionDataset, load_binding_affinity_dataframes
 
@@ -32,7 +33,7 @@ class WeightedBinding_Loss(nn.Module):
         return loss
         
         
-def train(config=None, init_wandb=True, prefix=None):
+def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
     if init_wandb:
         wandb.init(
@@ -47,9 +48,10 @@ def train(config=None, init_wandb=True, prefix=None):
     
     run_name = wandb.run.name
     # torch.autograd.set_detect_anomaly(True) # DEUGGING
-    
-    if run_name is None or len(run_name)<1:
-        run_name = str(config["seed"])
+    if config["run_number"] is None:
+        config["run_number"] = config["seed"]
+    if run_name is None or len(run_name) < 1 or not config["wandb_sweep"]:
+        run_name = str(config["run_number"])
     
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
@@ -63,11 +65,29 @@ def train(config=None, init_wandb=True, prefix=None):
     with open(join(output_folder, "config.json"), "w") as f:
         json.dump(dict(config), f)
     
-    if prefix is not None:
-        checkpoint_path = os.path.join(output_folder, f"checkpoint_{prefix}.pt")
-    else:
-        checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
+    checkpoints_folder = os.path.join(output_folder, "checkpoints")
+    os.makedirs(checkpoints_folder, exist_ok=True)
+    existing_checkpoints = os.listdir(checkpoints_folder)
+    existing_checkpoints = sorted([fname for fname in existing_checkpoints if "_checkpoint.pt" in fname])
     
+    resume_checkpoint_path = None
+    resume_config = None
+    if len(existing_checkpoints)<1:
+        checkpoint_fname = "001_checkpoint.pt"
+    else:
+        last_checkpoint_fname = existing_checkpoints[-1]
+        resume_checkpoint_label = last_checkpoint_fname.split(".")[0]
+        with open(os.path.join(checkpoints_folder, resume_checkpoint_label+".json"), "r") as f:
+            resume_config = json.load(f)
+        
+        resume_checkpoint_path = os.path.join(checkpoints_folder, last_checkpoint_fname)
+        checkpoint_number = int(last_checkpoint_fname.split("_")[0]) + 1
+        checkpoint_number = str(checkpoint_number).zfill(3)
+        checkpoint_fname = checkpoint_number + "_checkpoint.pt"
+        
+    checkpoint_path = os.path.join(checkpoints_folder, checkpoint_fname)
+    wandb.run.summary["checkpoints/Checkpoint_path"] = checkpoint_path
+    checkpoint_label = checkpoint_fname.split(".")[0]
 
     train_ba_df, val_ba_df, test_ba_df = load_binding_affinity_dataframes(config)
 
@@ -75,12 +95,8 @@ def train(config=None, init_wandb=True, prefix=None):
     val_ba_df.to_csv(join(output_folder, f"val_df_{run_name}.csv"), index=False)
     pos_weight, neg_weight = get_class_weights(train_ba_df, target_label="Label")
     
-    if prefix is not None:
-        wandb.run.summary[prefix+'/'+"pos_weight"] = pos_weight
-        wandb.run.summary[prefix+'/'+"neg_weight"] = neg_weight
-    else:
-        wandb.run.summary["pos_weight"] = pos_weight
-        wandb.run.summary["neg_weight"] = neg_weight
+    wandb.run.summary["pos_weight"] = pos_weight
+    wandb.run.summary["neg_weight"] = neg_weight
     
     train_dset = SequencesInteractionDataset(train_ba_df, hla_repr=config["hla_repr"])
     val_dset = SequencesInteractionDataset(val_ba_df, hla_repr=config["hla_repr"])
@@ -91,14 +107,24 @@ def train(config=None, init_wandb=True, prefix=None):
     test_loader = DataLoader(test_dset, batch_size=config['batch_size'], drop_last=False)
 
 
-
     model = Peptide_HLA_BindingClassifier(config, device)
     model.to(device)
     for p in model.parameters():
         if not p.requires_grad:
             continue
         p.register_hook(lambda grad: torch.clamp(grad, -1, 1))
-    
+        
+        
+    if config["init_checkpoint"] is not None and resume_checkpoint_path is None:
+        print("Initializing model using checkpoint {}".format(config["init_checkpoint"]))
+        model.load_state_dict(torch.load(config["init_checkpoint"]))
+        wandb.run.summary["checkpoints/Init_checkpoint"] = config["init_checkpoint"]
+            
+    if resume_checkpoint_path is not None:
+        print("Resuming training from checkpoint {}".format(resume_checkpoint_path))
+        model.load_state_dict(torch.load(resume_checkpoint_path))
+        wandb.run.summary["checkpoints/Resuming_checkpoint"] = resume_checkpoint_path
+        
     with open(join(output_folder, "architecture.txt"), "w") as f:
         f.write(model.__repr__())
         
@@ -119,11 +145,19 @@ def train(config=None, init_wandb=True, prefix=None):
     n_iters_per_val_cycle = config["accumulate_batches"] * config["validate_every_n_updates"]    
     
     
-    lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
-                                      ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    # lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
+    #                                   ramp_up=config['ramp_up'], cool_down=config['cool_down'])
+    
+    if resume_checkpoint_path is None and config["init_checkpoint"] is None:
+        def lr_lambda(s): return warmup_constant_lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
+                                         ramp_up=config['ramp_up'])
+    else:
+        lr_lambda = lambda s: 1.0
+        
+        
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
-    
+    # model.eval() #TODO REMOVE
     n_update = -1
     perform_validation = False
     log_results = False
@@ -157,7 +191,8 @@ def train(config=None, init_wandb=True, prefix=None):
             if n_update % config["validate_every_n_updates"] == 0:
                 perform_validation = True
         
-        
+            
+            
         if perform_validation:
             avg_val_logs = None
             perform_validation = False
@@ -189,7 +224,7 @@ def train(config=None, init_wandb=True, prefix=None):
                 avg_val_logs[k] /= len(val_loader)
             
             targets = val_ba_df["Label"].values
-            val_classification_metrics = eval_classification_metrics(targets, val_predictions, 
+            val_classification_metrics = eval_classification_metrics(targets[:len(val_predictions)], val_predictions, 
                                                     is_logit=True, threshold=0.5)
             val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
             
@@ -198,7 +233,11 @@ def train(config=None, init_wandb=True, prefix=None):
                 best_val_loss = epoch_val_loss
                 best_loss_iter = n_iter
                 torch.save(model.state_dict(), checkpoint_path)
-            
+                resume_config = {"n_iter": n_iter, "n_update": n_update}
+                with open(os.path.join(checkpoints_folder, checkpoint_label+".json"), "w") as f:
+                    json.dump(resume_config, f, indent=2)
+                    
+                    
             log_results = True
             model.train()
             
@@ -219,11 +258,11 @@ def train(config=None, init_wandb=True, prefix=None):
             logs.update(avg_val_logs)
             logs.update(val_classification_metrics)
             
-            if prefix is not None:
-                logs = {prefix+"/"+k: v for k, v in logs.items()}
-            
             wandb.log(logs)      
             avg_train_logs = None
+            
+            print("TEST ALL GOOD!")
+            sys.exit(0)
             
         if config.get("early_stopping", False):
             if (n_iter - best_loss_iter)/n_iters_per_val_cycle>config['patience']:
@@ -249,6 +288,7 @@ def train(config=None, init_wandb=True, prefix=None):
             pred_ba = [pred_ba]
         test_predictions.extend(pred_ba)
         
+        
     test_predictions.extend([np.nan]*(len(test_ba_df)-len(test_predictions)))
     test_ba_df["Predicted Logits"] = test_predictions
     test_ba_df.to_csv(join(output_folder, f"test_predictions_{run_name}.csv"), index=False)
@@ -263,9 +303,6 @@ def train(config=None, init_wandb=True, prefix=None):
                         y_true=targets, preds=predicted_classes,
                         class_names=[0, 1])})
 
-    
-    if prefix is not None:
-        test_metrics = {prefix+'/'+k: v for k, v in test_metrics.items()}
     for k, v in test_metrics.items():
         wandb.run.summary[k] = v
     
@@ -281,11 +318,12 @@ def train(config=None, init_wandb=True, prefix=None):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--run_number", type=int, default=0)
     parser.add_argument("--experiment_name", type=str, default="devel_ba_separate")
     parser.add_argument("--experiment_group", type=str, default="BindingAffinity_DHLAP")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
+    parser.add_argument("--init_checkpoint", default=None)
     
-    # parser.add_argument("--joint_pooling", action="store_true", default=False)
     parser.add_argument("--PMA_num_heads", type=int, default=2)
     parser.add_argument("--dropout_p", type=float, default=0.15)
     parser.add_argument("--embedding_dim", type=int, default=512)
@@ -322,10 +360,13 @@ if __name__=="__main__":
     parser.add_argument("--lr", type=float, default=1e-2)
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--momentum", type=float, default=0.95)
-    parser.add_argument("--nesterov_momentum", action="store_true", default=True)
+    parser.add_argument("--nesterov_momentum", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--min_frac", type=float, default=0.01)
     parser.add_argument("--ramp_up", type=float, default=0.3)
     parser.add_argument("--cool_down", type=float, default=0.6)
+    
+    
+    parser.add_argument("--wandb_sweep", action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
     
