@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from selfpeptide.utils.constants import *
-
+from selfpeptide.utils.function_utils import *
 
 #################################################
 # SNS datasets
@@ -348,6 +348,131 @@ class SequencesInteractionDataset(Dataset):
         cols = ["Peptide", hla_repr, target_label]
         self.data_matrix = df[cols].values.tolist()
     
+    def __len__(self):
+        return len(self.data_matrix)
+    
+    def __getitem__(self, ix):
+        return self.data_matrix[ix]
+    
+    
+    
+#########################################################
+# Immunogenicity datasets
+
+   
+def load_immunogenicity_dataframes(config, split_data=True):
+    ps_df = pd.read_csv(config['pseudo_seq_file'], sep="\t")
+    hla_mapping = dict(ps_df[["HLA", "sequence"]].values)
+
+    res_df = None
+    if config.get("trainval_df", None) is not None and config.get("test_df", None) is not None:
+        print("Loading pre-computed training and test sets..")
+        trainval_df = pd.read_csv(config["trainval_df"])
+        test_df = pd.read_csv(config["test_df"])
+    else:
+        imm_beta_df = pd.read_csv(config['immunogenicity_df'])
+        imm_beta_df["Allele Pseudo-sequence"] = imm_beta_df["HLA"].str.replace("*", "", regex=False).map(hla_mapping)
+        imm_beta_df = imm_beta_df.dropna(subset=["Peptide", "Allele Pseudo-sequence"])
+        imm_beta_df["Target"] = (imm_beta_df["Qualitative Measurement"]!="Negative").astype(int).values
+        imm_beta_df["Sample"] = imm_beta_df["Peptide"] + "_" + imm_beta_df["HLA"]
+               
+               
+        imm_beta_df["Peptide Length"] = imm_beta_df["Peptide"].str.len()
+        imm_beta_df = imm_beta_df[(imm_beta_df["Peptide Length"]>=MIN_PEPTIDE_LEN)&(imm_beta_df["Peptide Length"]<=MAX_PEPTIDE_LEN)]
+        
+        imm_beta_df = imm_beta_df.sort_values(by="Number of Subjects Tested", 
+                                              ascending=False).drop_duplicates(
+                                                  "Sample", keep="first").reset_index(drop=True)
+                                              
+        min_subjects_tested = config.get("min_subjects_tested", 1)
+        imm_beta_df = imm_beta_df[imm_beta_df["Number of Subjects Tested"]>=min_subjects_tested]
+        
+        
+        imm_beta_df = imm_beta_df.dropna()
+        
+        imm_beta_df = filter_peptide_dataset(imm_beta_df, sorted_vocabulary)
+        hla_filter = config.get("hla_filter", None)
+        if hla_filter is not None:
+            imm_beta_df = imm_beta_df[imm_beta_df["HLA"].str.startswith(hla_filter)]
+        imm_beta_df = imm_beta_df.reset_index(drop=True)
+            
+        if config.get("beta_prior", None) is not None:
+            selected_priors = beta_priors[config["beta_prior"]]
+            
+            print("Applying chosen prior..")
+            for ix in tqdm(range(len(imm_beta_df))):
+                row = imm_beta_df.iloc[ix]
+                add_a, add_b = selected_priors[row["Qualitative Measurement"]]
+                imm_beta_df.at[ix, "Alpha"] += add_a
+                imm_beta_df.at[ix, "Beta"] += add_b
+                imm_beta_df.at[ix, "Distr. Mean"] = beta_distr_mean(imm_beta_df.at[ix, "Alpha"], imm_beta_df.at[ix, "Beta"])
+                imm_beta_df.at[ix, "Distr. Variance"] = beta_distr_var(imm_beta_df.at[ix, "Alpha"], imm_beta_df.at[ix, "Beta"])
+                
+        a = imm_beta_df["Number of Subjects Positive"] + 1
+        b = imm_beta_df["Number of Subjects Tested"] - imm_beta_df["Number of Subjects Positive"] + 1
+        imm_beta_df["Obs. Mean"] = a/(a+b)
+        imm_beta_df["Obs. Variance"] = a*b/((a+b)**2 * (a+b+1))
+        
+        mean_threshold = config.get("mean_threshold", None)
+        if mean_threshold is not None and mean_threshold!="none":
+            n_starting_samples = len(imm_beta_df)
+            pos_imm_beta_df = imm_beta_df[(imm_beta_df["Target"]==1)&(imm_beta_df["Distr. Mean"]>mean_threshold)]
+            neg_imm_beta_df = imm_beta_df[(imm_beta_df["Target"]==0)&(imm_beta_df["Distr. Mean"]<=mean_threshold)]
+            imm_beta_df = pd.concat([pos_imm_beta_df, neg_imm_beta_df])
+            imm_beta_df = imm_beta_df.sample(frac=1, replace=False)
+            n_filtered_samples = n_starting_samples - len(imm_beta_df)
+            print(f"Filtered {n_filtered_samples} samples based on threshold")
+            
+        imm_beta_df["Stratification_index"] = imm_beta_df["HLA"] + "_" + imm_beta_df["Target"].astype(str)
+        
+        ix = imm_beta_df["Stratification_index"].value_counts()
+        low_count_labels = ix[ix<3].index
+        
+        res_df = imm_beta_df[imm_beta_df["Stratification_index"].isin(low_count_labels)]
+        imm_beta_df = imm_beta_df[~imm_beta_df["Stratification_index"].isin(low_count_labels)]
+
+        test_size = config.get("test_size", 0.15)
+        trainval_df, test_df = train_test_split(imm_beta_df, test_size=test_size, stratify=imm_beta_df["Stratification_index"], random_state=config['seed'], shuffle=True)
+    val_size = config.get("val_size", 0.1)
+    train_df, val_df = train_test_split(trainval_df, test_size=val_size, stratify=trainval_df["Stratification_index"], random_state=config['seed'], shuffle=True)
+    if res_df is not None:
+        train_df = pd.concat([train_df, res_df])
+
+        
+    dhlap_imm_df = pd.read_csv(config['dhlap_df'])
+    dhlap_imm_df["Allele Pseudo-sequence"] = dhlap_imm_df["HLA"].str.replace("*", "", regex=False).map(hla_mapping)
+    dhlap_imm_df = dhlap_imm_df.dropna()
+    
+    # Filter DHLAP to keep only samples not trained on  
+    iedb_samples = set(tuple(x) for x in trainval_df[["Peptide", "HLA"]].values).union(set(tuple(x) for x in res_df[["Peptide", "HLA"]].values))
+    dhlap_samples = set(tuple(x) for x in dhlap_imm_df[["Peptide", "HLA"]].values)
+    dhlap_imm_df = dhlap_imm_df[dhlap_imm_df[["Peptide", "HLA"]].apply(tuple, 1).isin(dhlap_samples.difference(iedb_samples))]
+    
+    # dhlap_imm_df = dhlap_imm_df.merge(blast_df, left_on="Peptide", right_on="Peptide")
+    dhlap_imm_df = dhlap_imm_df.dropna()
+    dhlap_imm_df = filter_peptide_dataset(dhlap_imm_df, amino_acids)
+    if dhlap_imm_df is not None and hla_filter is not None:
+        dhlap_imm_df = dhlap_imm_df[dhlap_imm_df["HLA"].str.startswith(hla_filter)]
+    dhlap_imm_df = dhlap_imm_df.reset_index(drop=True)
+
+    if split_data:
+        print("IEDB N. training samples: {}".format(len(train_df)))
+        print("IEDB N. val samples: {}".format(len(val_df)))
+        print("IEDB N. test samples: {}".format(len(test_df)))
+        
+        return train_df, val_df, test_df, dhlap_imm_df
+    else:
+        return imm_beta_df, dhlap_imm_df
+    
+    
+
+class BetaDistributionDataset(Dataset):
+    def __init__(self, df, hla_repr="Allele Pseudo-sequence"):
+        super().__init__()
+        cols = ["Peptide", hla_repr, 
+                "Alpha", "Beta", "Target"]
+        self.data_matrix = df[cols].values.tolist()
+        
     def __len__(self):
         return len(self.data_matrix)
     

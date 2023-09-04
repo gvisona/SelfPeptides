@@ -42,7 +42,7 @@ def train(config=None, init_wandb=True):
 
     if not exists(config['project_folder']):
         raise ValueError("Project folder does not exist")
-    pass
+    
 
     output_folder = join(config['project_folder'],
                          "outputs",
@@ -53,7 +53,7 @@ def train(config=None, init_wandb=True):
     
     with open(join(output_folder, "config.json"), "w") as f:
         json.dump(dict(config), f)
-    sys.exit(0)
+    # sys.exit(0)
     
     # checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
     checkpoints_folder = os.path.join(output_folder, "checkpoints")

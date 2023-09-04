@@ -71,6 +71,17 @@ class ResMLP_Network(nn.Module):
                                                   ResMLP(config["mlp_num_layers"], config["mlp_hidden_dim"], config["output_dim"]))
         self.projection_model.to(device)
         
+        self.apply(self._init_weights)
+        
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            if module.bias is not None:
+                module.bias.data.normal_(mean=0.0, std=0.01)
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.normal_(mean=0.0, std=0.01)
+            module.weight.data.normal_(mean=1.0, std=0.01)
+        
     def forward(self, *args):
         joined_embs = torch.cat(args, dim=-1)
         if joined_embs.dim()==1:

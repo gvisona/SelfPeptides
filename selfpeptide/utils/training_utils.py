@@ -9,6 +9,8 @@ import os
 from os.path import exists, join
 import torch
 import torch.nn as nn
+from scipy.stats import beta
+from selfpeptide.utils.function_utils import get_alpha, get_beta, beta_distr_mean
 
 def sigmoid(x):
     return 1/(1 + np.exp(-x))
@@ -99,6 +101,22 @@ def eval_classification_metrics(targets, predictions, is_logit=False, threshold=
         "AUPRC": average_precision_score(targets, predictions)
     }
     
+    return metrics
+
+def eval_regression_metrics(fractional_targets, predictions, target_vars=None, pred_vars=None):
+    metrics = {}
+    metrics["BetaMean-R"] = np.corrcoef(predictions, fractional_targets)[0,1]
+    metrics["BetaMean-RMSE"] = np.sqrt(np.mean(np.square(predictions - fractional_targets)))
+    
+    if target_vars is not None and pred_vars is not None:
+        pred_alphas = get_alpha(predictions, pred_vars)
+        pred_betas = get_beta(predictions, pred_alphas)
+        target_alphas = get_alpha(fractional_targets, target_vars)
+        target_betas = get_beta(fractional_targets, target_alphas)
+        
+        kl = torch.mean(beta_kl_divergence(pred_alphas, pred_betas, target_alphas, target_betas)).item()
+        metrics["BetaKL"] = kl
+
     return metrics
 
 
@@ -251,4 +269,118 @@ class CustomCMT_AllTriplets_Loss(nn.Module):
         loss = cmt_loss + self.reg_weight*l2_reg
         
         logs = {"loss": loss.item(), "cmt_loss": cmt_loss.item(), 'l2_reg': l2_reg.item()}
+        return loss, logs
+    
+    
+    
+def get_class_weights(df, target_label="Target"):
+    pos_class_samples = df[target_label].sum()
+    neg_class_samples = len(df) - pos_class_samples
+    
+    n_samples = len(df)
+    rebalancing_beta = (n_samples-1)/n_samples
+    effective_pos_samples = get_effective_class_samples(pos_class_samples, rebalancing_beta)
+    effective_neg_samples = get_effective_class_samples(neg_class_samples, rebalancing_beta)
+    
+    pos_weight = n_samples/effective_pos_samples
+    neg_weight = n_samples/effective_neg_samples
+    
+    return pos_weight, neg_weight
+
+
+def find_optimal_sf_quantile(df, class_threshold=0.5, target_metric="F1"):
+    best_metric = 0
+    best_threshold = 0.0
+    for q_threshold in np.linspace(0.01, 0.51, 51):
+        predicted_icdf = beta.sf(q_threshold, df["Alpha"], df["Beta"])
+
+        metrics = eval_classification_metrics(df["Target"], predicted_icdf, is_logit=False, threshold=class_threshold)
+        if metrics[target_metric]>best_metric:
+            best_metric = metrics[target_metric]
+            best_threshold = q_threshold
+    return best_threshold
+
+
+
+
+def beta_kl_divergence(alpha1, beta1, alpha2, beta2):
+    if isinstance(alpha1, (list, np.ndarray)):
+        alpha1 = torch.tensor(alpha1)
+    if isinstance(beta1, (list, np.ndarray)):
+        beta1 = torch.tensor(beta1)
+    if isinstance(alpha2, (list, np.ndarray)):
+        alpha2 = torch.tensor(alpha2)
+    if isinstance(beta2, (list, np.ndarray)):
+        beta2 = torch.tensor(beta2)
+    
+    
+    assert (alpha1<0).sum()==0, "Invalid alpha1"
+    assert (beta1<0).sum()==0, "Invalid beta1"
+    assert (alpha2<0).sum()==0, "Invalid alpha2"
+    assert (beta2<0).sum()==0, "Invalid beta2"
+    
+    kl_div = (torch.lgamma(alpha1+beta1) - torch.lgamma(alpha2+beta2)
+              - (torch.lgamma(alpha1) + torch.lgamma(beta1))
+              + (torch.lgamma(alpha2) + torch.lgamma(beta2))
+              + (alpha1 - alpha2) * (torch.digamma(alpha1) - torch.digamma(alpha1+beta1))
+              + (beta1 - beta2) * (torch.digamma(beta1) - torch.digamma(alpha1+beta1))
+             )
+    return kl_div
+
+
+class CustomKL_Loss(nn.Module):
+    def __init__(self, config, class_weights=[1.0, 1.0], device="cpu"):
+        super().__init__()
+
+        self.regression_loss = config.get("regression_loss", "none")
+        self.regression_weight = config.get("regression_weight", 1.0)
+        
+        self.kl_weight = config.get("kl_weight", 1.0)
+        self.kl_loss_type = config.get("kl_loss_type", "forward")
+        self.class_weights = torch.tensor(class_weights).to(device)
+        self.device = device
+        
+
+    def forward(self, predictions, alphas, betas, class_targets):
+        loss = 0
+        logs = {}
+        
+        means = predictions[:,0]
+        variances = predictions[:, 1]
+        
+        pred_alphas = get_alpha(means, variances)
+        pred_betas = get_beta(means, pred_alphas)
+        
+        obs_means = beta_distr_mean(alphas, betas)
+        weights = torch.gather(self.class_weights, 0, class_targets.long())
+        
+        if self.regression_loss=="L1":
+            reg_loss = torch.abs(obs_means - means)
+            reg_loss = torch.mean(reg_loss * weights)
+        elif self.regression_loss=="MSE":
+            reg_loss = torch.square(obs_means - means)
+            reg_loss = torch.mean(reg_loss * weights)
+
+             
+        # Beta KL divergence
+        if self.kl_weight>0.0:
+            kl_loss = 0
+            if self.kl_loss_type == "forward" or self.kl_loss_type=="both":
+                kl_loss += beta_kl_divergence(pred_alphas, pred_betas, alphas, betas)
+            if self.kl_loss_type == "backward" or self.kl_loss_type=="both":
+                kl_loss += beta_kl_divergence(alphas, betas, pred_alphas, pred_betas)
+            if self.kl_loss_type=="both":
+                kl_loss /= 2
+            kl_loss = torch.mean(kl_loss * weights)
+            loss += self.kl_weight * kl_loss 
+            logs["KL"] = kl_loss.item()
+
+        
+        if self.regression_loss!="none":
+            loss += self.regression_weight * reg_loss 
+            logs[self.regression_loss] = reg_loss.item()
+        
+            
+        logs["loss"] =  loss.item()
+               
         return loss, logs
