@@ -331,7 +331,7 @@ if __name__=="__main__":
     parser.add_argument("--num_heads", type=int, default=2)
     
     parser.add_argument("--regression_weight", type=float, default=1.0)
-    parser.add_argument("--early_stopping", type=bool, default=True)
+    parser.add_argument("--early_stopping", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--hla_repr", type=str, default="Allele Pseudo-sequence")
     parser.add_argument("--transf_hidden_dim", type=int, default=32)
     parser.add_argument("--output_dim", type=int, default=1)
