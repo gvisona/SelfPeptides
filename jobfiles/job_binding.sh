@@ -20,8 +20,8 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_binding_model.py  \
 --accumulate_batches 64 --lr  "$lr" \
 --weight_decay "$wd" \
 --val_size 0.1 --test_size 0.15 \
---validate_every_n_updates 2 \
---max_updates 5 --dropout_p 0.05 \
+--validate_every_n_updates 32 \
+--max_updates 5000 --dropout_p 0.05 \
 --ramp_up 0.2 --min_frac 0.1 --force_warmup \
 --momentum 0.9 --nesterov_momentum \
 --embedding_dim 512 --mlp_hidden_dim 2048 --mlp_num_layers 2 --output_dim 1 \
