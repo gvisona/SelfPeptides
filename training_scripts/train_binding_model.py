@@ -261,9 +261,6 @@ def train(config=None, init_wandb=True):
             wandb.log(logs)      
             avg_train_logs = None
             
-            print("TEST ALL GOOD!")
-            sys.exit(0)
-            
         if config.get("early_stopping", False):
             if (n_iter - best_loss_iter)/n_iters_per_val_cycle>config['patience']:
                 print("Val loss not improving, stopping training..\n\n")
