@@ -12,7 +12,6 @@ lr=${learning_rates[@]:${idx}:1}
 
 idx=$1
 sd=90412
-lr=1.0
 wd=0.0001
 
 python3 /home/gvisona/SelfPeptides/training_scripts/train_binding_model.py  \
@@ -28,7 +27,7 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_binding_model.py  \
 --PMA_num_heads 4 --PMA_ln --num_heads 4 --transf_hidden_dim 512 --n_attention_layers 2 \
 --batch_size 32 \
 --hla_repr "Allele Pseudo-sequence" --early_stopping --patience 200 \
---experiment_group "Binding_model_masking" --experiment_name "BA_tune" \
+--experiment_group "Binding_model_masking" --experiment_name "BA_tune_lr" \
 --project_folder "/fast/gvisona/SelfPeptides" \
 --pretrained_aa_embeddings "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy" \
 --init_checkpoint "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt" \
