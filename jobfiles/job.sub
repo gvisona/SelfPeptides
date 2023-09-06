@@ -16,6 +16,6 @@ requirements=TARGET.CUDAGlobalMemoryMb>25000
 
 +MaxRunningPrice = 300
 +RunningPriceExceededAction = "restart"
-queue 3
+queue 4
 
 # condor_submit_bid 80 -i -append 'request_memory=128GB' -append 'request_gpus=1' -append 'requirements=TARGET.CUDACapability>=3.7' -append 'requirements=TARGET.CUDAGlobalMemoryMb>10000'

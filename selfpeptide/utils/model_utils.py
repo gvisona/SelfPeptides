@@ -11,7 +11,7 @@ def load_binding_model(folder, device="cpu"):
     config["pretrained_aa_embeddings"] = "none"
     model = Peptide_HLA_BindingClassifier(config, device)
     model.to(device)
-    checkpoint_path = os.path.join(folder, "checkpoint.pt")
+    checkpoint_path = os.path.join(folder, "checkpoints", "001_checkpoint.pt")
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     return model
 
