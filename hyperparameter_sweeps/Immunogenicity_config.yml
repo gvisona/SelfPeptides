@@ -117,3 +117,5 @@ parameters:
     value: "/home/gvisona/SelfPeptides/trained_models/sns_model/config.json"
   sns_model_checkpoint:
     value: "/home/gvisona/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt"
+  wandb_sweep:
+    value: True

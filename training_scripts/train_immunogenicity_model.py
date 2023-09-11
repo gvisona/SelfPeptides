@@ -33,7 +33,7 @@ def train(config=None, init_wandb=True):
         config = wandb.config
     
     run_name = wandb.run.name
-    if config["run_number"] is None:
+    if config.get("run_number", None) is None:
         run_number = config["seed"]
     else:
         run_number = config["run_number"]
