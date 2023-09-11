@@ -22,7 +22,9 @@ parameters:
     min: 1e-9
     max: 5e-6
   momentum:
-    value: 0.99
+    values: 
+    - 0.99
+    - 0.9
   nesterov_momentum:
     value: True
   max_updates:
@@ -49,41 +51,34 @@ parameters:
     value: True
   patience:
     value: 200
-  PMA_ln: 
+  PMA_ln:
     value: True
-  PMA_num_heads: 
+  PMA_num_heads:
     value: 4
-  dropout_p: 
+  dropout_p:
     value: 0.05
-  embedding_dim: 
+  embedding_dim:
     value: 512
-  n_attention_layers: 
+  n_attention_layers:
     value: 2
-  transf_hidden_dim: 
-  value: 512
+  transf_hidden_dim:
+    value: 512
   num_heads:
     value: 4
-  mlp_input_dim: 
+  mlp_input_dim:
     value: 2560
-  mlp_hidden_dim: 
+  mlp_hidden_dim:
     value: 2048
-  mlp_num_layers: 
+  mlp_num_layers:
     value: 2
-  output_dim: 8
-  beta_regr_hidden_dim: 
+  output_dim: 
+    value: 8
+  beta_regr_hidden_dim:
     value: 64
-  peptide_emb_pooling: 
-    value: "PMA"
-  peptide_embedding_model: 
-    value: "AATransformerEncoder"
-  hla_repr": 
+  hla_repr:
     value: "Allele Pseudo-sequence"
-  hla_embedding_model: 
-    value: "shared"
-  hla_emb_pooling: 
-    value: none
   beta_prior:
-    values: 
+    values:
     - "strong_priors_lowest_var_strong_negatives"
     - "uniform"
     - "strong_priors_lowest_var"
@@ -97,7 +92,7 @@ parameters:
   target_metric:
     value: F1
   use_class_weights:
-    values: 
+    values:
     - False
     - True
   kl_weight:
@@ -105,17 +100,15 @@ parameters:
   regression_weight:
     value: 1.0
   kl_loss_type:
-    values: 
+    values:
     - "forward"
     - "backward"
     - "both"
   mean_threshold:
-    values: 
+    values:
     - "none"
     - 0.1
     - 0.2
-  hla_filter:
-    value: none
   binding_model_config:
     value: "/home/gvisona/SelfPeptides/trained_models/binding_model/config.json"
   binding_model_checkpoint:

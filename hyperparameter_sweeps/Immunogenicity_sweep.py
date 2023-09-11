@@ -1,8 +1,8 @@
 import sys
 sys.path.insert(0, "..")
-sys.path.insert(0, "/home/gvisona/Projects/Immunology")
-sys.path.insert(0, "/home/gvisona/Immunology")
-sys.path.insert(0, "/fast/gvisona/Immunology")
+sys.path.insert(0, "/home/gvisona/Projects/SelfPeptides")
+sys.path.insert(0, "/home/gvisona/SelfPeptides")
+sys.path.insert(0, "/fast/gvisona/SelfPeptides")
 import os
 import yaml
 import pprint
@@ -18,12 +18,12 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     
-    sweep_id = 'x06n0e67'
+    sweep_id = '8f5jmmhh'
     
-    if os.path.exists("/home/gvisona/Projects/Immunology"):
-        project_folder = "/home/gvisona/Projects/Immunology"
+    if os.path.exists("/home/gvisona/Projects/SelfPeptides"):
+        project_folder = "/home/gvisona/Projects/SelfPeptides"
     else:
-        project_folder = "/home/gvisona/Immunology"
+        project_folder = "/home/gvisona/SelfPeptides"
     
     with open(os.path.join(project_folder, "hyperparameter_sweeps", "Immunogenicity_config.yml"), "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
