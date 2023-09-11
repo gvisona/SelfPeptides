@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 import re
 from selfpeptide.model.components import *
-
+import warnings
 
 class AA_Tokenizer(nn.Module):
     def __init__(self, sorted_vocabulary, device="cpu", padding_token="*"):
@@ -37,11 +37,11 @@ class AA_Tokenizer(nn.Module):
             for s in seqs:
                 attention_mask.append([1 if aa==self.padding_token else 0 for aa in s]) # Mask is 1 for padding token, 0 otherwise
                 aa_ids.append([self.token2idx[aa] for aa in s])
-            attention_mask = torch.tensor(attention_mask).bool().to(self.device) 
+            attention_mask = torch.tensor(attention_mask).to(self.device).bool()
             aa_ids = torch.LongTensor(aa_ids).to(self.device) 
         elif torch.is_tensor(seqs):
             aa_ids = seqs.long().to(self.device)
-            attention_mask = (torch.eq(aa_ids, self.token2idx[self.padding_token])).bool().to(self.device) 
+            attention_mask = (torch.eq(aa_ids, self.token2idx[self.padding_token])).to(self.device).bool() 
         else:
             raise ValueError("AA_Tokenizer requires strings of amino acids or pre-tokenized tensors")
         
@@ -77,7 +77,9 @@ class TEncoderLayer(nn.Module):
             module.weight.data.normal_(mean=1.0, std=0.01)
     
     def forward(self, X, padding_mask):
-        multihead_output, attn_weights = self.multihead_attention(X, X, X, padding_mask)
+        with warnings.catch_warnings(): # Pytorch MHA has an annoying warning on boolean masks that is bugged
+            warnings.simplefilter("ignore")
+            multihead_output, attn_weights = self.multihead_attention(X, X, X, key_padding_mask=padding_mask)
         multihead_output = self.dropout1(multihead_output)
 
         resnorm_output = self.res_norm1(multihead_output, X)

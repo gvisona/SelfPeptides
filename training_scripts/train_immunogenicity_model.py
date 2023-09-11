@@ -17,7 +17,7 @@ from selfpeptide.utils.training_utils import get_class_weights, find_optimal_sf_
 from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule, eval_regression_metrics, eval_classification_metrics, CustomCMT_AllTriplets_Loss
 from selfpeptide.utils.function_utils import get_alpha, get_beta
 from selfpeptide.utils.model_utils import load_binding_model, load_sns_model
-from selfpeptide.model.immunogenicity_classifier import ImmunogenicityClassifier
+from selfpeptide.model.immunogenicity_classifier import JointPeptidesNetwork
 
 def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
@@ -34,9 +34,12 @@ def train(config=None, init_wandb=True):
     
     run_name = wandb.run.name
     if config["run_number"] is None:
-        config["run_number"] = config["seed"]
+        run_number = config["seed"]
+    else:
+        run_number = config["run_number"]
+        
     if run_name is None or len(run_name) < 1 or not config["wandb_sweep"]:
-        run_name = str(config["run_number"])
+        run_name = str(run_number)
 
     output_folder = join(config['project_folder'],
                          "outputs",
@@ -89,13 +92,10 @@ def train(config=None, init_wandb=True):
     test_loader = DataLoader(test_dset, batch_size=config['batch_size'], drop_last=False)
     
     print("Loading model")
-    binding_model = load_binding_model(config["binding_model_folder"])
-    binding_model.eval()
-    sns_model = load_sns_model(config["sns_model_folder"])
-    # sns_model.eval()
-    model = ImmunogenicityClassifier(config, device, 
-                                     binding_model=binding_model, 
-                                     sns_model=sns_model)
+    model = JointPeptidesNetwork(config, config["binding_model_config"], config["sns_model_config"], 
+                             binding_checkpoint=config["binding_model_checkpoint"], 
+                             sns_checkpoint=config["sns_model_checkpoint"],
+                             device=device)
     
     
     if config.get("resume_checkpoint_directory", None) is not None:
@@ -146,8 +146,9 @@ def train(config=None, init_wandb=True):
         print("Initializing model using checkpoint {}".format(config["init_checkpoint"]))
         model.load_state_dict(torch.load(config["init_checkpoint"]))
         wandb.run.summary["checkpoints/Init_checkpoint"] = config["init_checkpoint"]
-        
-    if resume_checkpoint_path is not None:
+    
+    
+    if resume_checkpoint_path is not None and not config["force_restart"]:
         print("Resuming training from checkpoint {}".format(resume_checkpoint_path))
         model.load_state_dict(torch.load(resume_checkpoint_path))
         wandb.run.summary["checkpoints/Resuming_checkpoint"] = resume_checkpoint_path
@@ -158,7 +159,7 @@ def train(config=None, init_wandb=True):
     checkpoint_label = checkpoint_fname.split(".")[0]
     
     
-    optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=config['lr'], momentum=config.get("momentum", 0.9),
+    optimizer = torch.optim.SGD(model.immunogenicity_model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                                 nesterov=config.get("nesterov_momentum", False),
                                 weight_decay=config['weight_decay'])
     
@@ -229,7 +230,7 @@ def train(config=None, init_wandb=True):
                 
             if perform_validation:
                 perform_validation = False
-                # model.eval()
+                model.immunogenicity_model.eval()
                 
                 avg_val_logs = None
                 val_pred_means = []
@@ -300,7 +301,7 @@ def train(config=None, init_wandb=True):
 
                     
                 log_results = True
-                # model.train()
+                model.immunogenicity_model.train()
             
             
             if log_results:
@@ -330,7 +331,7 @@ def train(config=None, init_wandb=True):
 
     print(f"\nLoading state dict from {checkpoint_path}\n\n")
     model.load_state_dict(torch.load(checkpoint_path))
-    # model.eval()
+    model.immunogenicity_model.eval()
     
     
     print("Testing model..")
@@ -467,11 +468,12 @@ def train(config=None, init_wandb=True):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--run_number", type=int, default=0)
+    parser.add_argument("--run_number", type=int)
     parser.add_argument("--experiment_name", type=str, default="devel")
     parser.add_argument("--experiment_group", type=str, default="Beta_regs_fullmodel")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     parser.add_argument("--init_checkpoint", default=None)
+    parser.add_argument("--force_restart", action=argparse.BooleanOptionalAction, default=True)
     
     
     parser.add_argument("--mean_threshold", type=float, default=0.15)
@@ -485,8 +487,10 @@ if __name__=="__main__":
                         default="/home/gvisona/Projects/SelfPeptides/processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv")    
     parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat")
     
-    parser.add_argument("--binding_model_folder", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/binding_model")
-    parser.add_argument("--sns_model_folder", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/sns_model")
+    parser.add_argument("--binding_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/binding_model/config.json")
+    parser.add_argument("--binding_model_checkpoint", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/binding_model/checkpoints/001_checkpoint.pt")
+    parser.add_argument("--sns_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/sns_model/config.json")
+    parser.add_argument("--sns_model_checkpoint", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt")
     
      
     parser.add_argument("--PMA_ln", action=argparse.BooleanOptionalAction, default=True)

@@ -114,7 +114,7 @@ def train(config=None, init_wandb=True):
             continue
         p.register_hook(lambda grad: torch.clamp(grad, -1, 1))
         
-        
+    resume_checkpoint_path = None # TODO REMOVE
     if config["init_checkpoint"] is not None and resume_checkpoint_path is None:
         print("Initializing model using checkpoint {}".format(config["init_checkpoint"]))
         model.load_state_dict(torch.load(config["init_checkpoint"]))
@@ -157,7 +157,6 @@ def train(config=None, init_wandb=True):
         
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
-    # model.eval() #TODO REMOVE
     n_update = -1
     perform_validation = False
     log_results = False

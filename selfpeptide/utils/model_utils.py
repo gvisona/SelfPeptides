@@ -25,3 +25,7 @@ def load_sns_model(folder, device="cpu"):
     checkpoint_path = os.path.join(folder, "checkpoints", "001_checkpoint.pt")
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     return model
+
+
+def build_immunogenicity_model():
+    pass
