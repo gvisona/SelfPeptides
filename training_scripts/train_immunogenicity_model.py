@@ -142,7 +142,7 @@ def train(config=None, init_wandb=True):
         checkpoint_number = str(checkpoint_number).zfill(3)
         checkpoint_fname = checkpoint_number + "_checkpoint.pt"
         
-    if config["init_checkpoint"] is not None and resume_checkpoint_path is None:
+    if config.get("init_checkpoint", None) is not None and resume_checkpoint_path is None:
         print("Initializing model using checkpoint {}".format(config["init_checkpoint"]))
         model.load_state_dict(torch.load(config["init_checkpoint"]))
         wandb.run.summary["checkpoints/Init_checkpoint"] = config["init_checkpoint"]
