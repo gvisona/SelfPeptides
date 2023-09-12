@@ -1,7 +1,7 @@
 method: bayes
 metric:
   goal: maximize
-  name: val_class/F1
+  name: val_class/MCC
 parameters:
   accumulate_batches:
     value: 64
@@ -12,7 +12,7 @@ parameters:
   experiment_group:
     value: IEDB_BetaRegression_JointNetwork
   experiment_name:
-    value: Beta_JointPeptides
+    value: Beta_JointPeptides_MCC
   immunogenicity_df:
     value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_Beta_noPrior.csv
   dhlap_df:
@@ -90,7 +90,7 @@ parameters:
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
   target_metric:
-    value: F1
+    value: MCC
   use_class_weights:
     values:
     - False
