@@ -163,7 +163,7 @@ def train(config=None, init_wandb=True):
                                 nesterov=config.get("nesterov_momentum", False),
                                 weight_decay=config['weight_decay'])
     
-    if resume_checkpoint_path is None and config["init_checkpoint"] is None:
+    if resume_checkpoint_path is None and config.get("init_checkpoint", None) is None:
         def lr_lambda(s): return warmup_constant_lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
                                          ramp_up=config['ramp_up'])
     else:
