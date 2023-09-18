@@ -4,7 +4,10 @@ metric:
   name: val_class/MCC
 parameters:
   accumulate_batches:
-    value: 64
+    values: 
+    - 1
+    - 8
+    - 64
   batch_size:
     value: 16
   cool_down:
@@ -19,14 +22,14 @@ parameters:
     value: /home/gvisona/Immunology/processed_data/DHLAP_immunogenicity_data.csv
   lr:
     distribution: log_uniform_values
-    min: 1e-7
-    max: 5e-4
+    min: 1e-8
+    max: 5e-6
   momentum:
     value: 0.99
   nesterov_momentum:
     value: True
   max_updates:
-    value: 5000
+    value: 10000
   min_frac:
     value: 0.1
   project_folder:
@@ -89,7 +92,6 @@ parameters:
     - "strong_priors_lowest_var_strong_negatives"
     - "strong_priors_lowest_var"
     - "full_random_search_mapping"
-    - "constrained_random_search_mapping"
   min_subjects_tested:
     value: 1
   pretrained_aa_embeddings:
