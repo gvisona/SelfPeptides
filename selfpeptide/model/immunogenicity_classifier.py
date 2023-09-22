@@ -96,6 +96,9 @@ class ImmunogenicityClassifier(nn.Module):
         return X_out
     
     
+
+
+
     
 class JointPeptidesNetwork(nn.Module):
     def __init__(self, imm_config, binding_config, sns_config, binding_checkpoint=None, sns_checkpoint=None, device="cpu"):
@@ -131,6 +134,80 @@ class JointPeptidesNetwork(nn.Module):
             p.requires_grad = False
             
         self.immunogenicity_model = ImmunogenicityClassifier(imm_config, device=device)
+        self.immunogenicity_model.train()
+    
+    def forward(self, peptides, hlas, *args):
+        binding_score, (binding_peptides_embs, binding_hlas_embs) = self.binding_model(peptides, hlas)
+        sns_peptides_projections, sns_peptides_embs, sns_scores = self.sns_model(peptides, return_sns_score=True)
+        
+        output = self.immunogenicity_model(peptides, hlas, binding_peptides_embs, binding_hlas_embs, 
+                                           sns_peptides_embs, binding_score, sns_scores)
+        return output
+    
+    
+    
+
+    
+class ImmunogenicityBinaryClassifier(nn.Module):
+    def __init__(self, config, device, epsilon=1e-3):
+        super().__init__()
+        self.config = config
+        self.device = device
+        self.epsilon = epsilon
+        
+            
+        self.immunogenicity_aa_embedder = PeptideEmbedder(config, device)
+        self.joint_mlp = ResMLP_Network(config, device)
+        
+
+    def forward(self, peptides, hlas, binding_peptides_embs, binding_hlas_embs, sns_peptides_embs, binding_score, sns_scores, *args):
+        peptide_imm_embs = self.immunogenicity_aa_embedder(peptides)
+        hla_imm_embs = self.immunogenicity_aa_embedder(hlas)
+        mlp_input = torch.cat([binding_peptides_embs, binding_hlas_embs, 
+                               sns_peptides_embs, peptide_imm_embs, 
+                               hla_imm_embs], dim=1)
+        
+        mlp_output = self.joint_mlp(mlp_input)
+        return mlp_output
+    
+    
+    
+    
+    
+class JointPeptidesNetwork_Classifier(nn.Module):
+    def __init__(self, imm_config, binding_config, sns_config, binding_checkpoint=None, sns_checkpoint=None, device="cpu"):
+        super().__init__()
+        if not isinstance(binding_config, dict):
+            with open(binding_config, "r") as f:
+                binding_config = json.load(f)
+        binding_config["pretrained_aa_embeddings"] = "none"
+        
+        if not isinstance(sns_config, dict):
+            with open(sns_config, "r") as f:
+                sns_config = json.load(f)
+        sns_config["pretrained_aa_embeddings"] = "none"
+        
+        self.binding_model = Peptide_HLA_BindingClassifier(binding_config, device=device) 
+        if binding_checkpoint is not None:
+            self.binding_model.load_state_dict(torch.load(binding_checkpoint, map_location=device))
+        else:
+            warnings.warn("Binding model not initialized")
+        self.binding_model.eval()
+        
+        self.sns_model = SelfPeptideEmbedder_withProjHead(sns_config, device=device)
+        if sns_checkpoint is not None:
+            self.sns_model.load_state_dict(torch.load(sns_checkpoint, map_location=device))
+        else:
+            warnings.warn("SnS model not initialized")
+        self.sns_model.eval()
+        
+        # Freeze binding and SnS model
+        for p in self.binding_model.parameters():
+            p.requires_grad = False
+        for p in self.sns_model.parameters():
+            p.requires_grad = False
+            
+        self.immunogenicity_model = ImmunogenicityBinaryClassifier(imm_config, device=device)
         self.immunogenicity_model.train()
     
     def forward(self, peptides, hlas, *args):

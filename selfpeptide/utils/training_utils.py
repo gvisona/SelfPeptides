@@ -302,6 +302,31 @@ def find_optimal_sf_quantile(df, class_threshold=0.5, target_metric="F1"):
 
 
 
+def find_optimal_sf_quantile_qualitative(df, priors, class_threshold=0.5, target_metric="F1"):
+    best_metric = 0
+    best_threshold = 0.0
+    mapping = {'Negative': 0, 
+            'Positive-Low': 1,
+            'Positive': 2,
+            'Positive-Intermediate': 3, 
+            'Positive-High': 4
+             }
+    
+    qualitative_idxs = df["Qualitative Measurement"].map(mapping)
+    beta_posteriors_adjustments = np.take(priors, qualitative_idxs, axis=0)
+    alphas = df["Alpha"] + beta_posteriors_adjustments[:, 0]
+    betas =  df["Beta"] + beta_posteriors_adjustments[:, 1]
+    
+    for q_threshold in np.linspace(0.01, 0.51, 51):
+        predicted_icdf = beta.sf(q_threshold, alphas, betas)
+
+        metrics = eval_classification_metrics(df["Target"], predicted_icdf, is_logit=False, threshold=class_threshold)
+        if metrics[target_metric]>best_metric:
+            best_metric = metrics[target_metric]
+            best_threshold = q_threshold
+    return best_threshold
+
+
 
 def beta_kl_divergence(alpha1, beta1, alpha2, beta2):
     if isinstance(alpha1, (list, np.ndarray)):
