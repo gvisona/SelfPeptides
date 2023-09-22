@@ -313,82 +313,82 @@ def train(config=None, init_wandb=True):
     model.immunogenicity_model.eval()
     
     
-    # print("Testing model..")
-    # test_predictions = []
-    # for ix, test_batch in tqdm(enumerate(test_loader)):
-    #     peptides, hla_pseudoseqs, imm_target = test_batch
-    #     imm_target = imm_target.float().to(device)
+    print("Testing model..")
+    test_predictions = []
+    for ix, test_batch in tqdm(enumerate(test_loader)):
+        peptides, hla_pseudoseqs, imm_target = test_batch
+        imm_target = imm_target.float().to(device)
         
-    #     predictions = model(peptides, hla_pseudoseqs).view(-1)
-    #     predictions = predictions.detach().cpu().tolist()
-    #     if not isinstance(predictions, list):
-    #         predictions = [predictions]
-    #     test_predictions.extend(predictions)
+        predictions = model(peptides, hla_pseudoseqs).view(-1)
+        predictions = predictions.detach().cpu().tolist()
+        if not isinstance(predictions, list):
+            predictions = [predictions]
+        test_predictions.extend(predictions)
 
-    # test_predictions.extend([np.nan]*(len(test_df)-len(test_predictions)))
+    test_predictions.extend([np.nan]*(len(test_df)-len(test_predictions)))
 
     
-    # test_df["Prediction"] = test_predictions
+    test_df["Prediction"] = test_predictions
     
-    # test_df.to_csv(join(results_folder, f"test_predictions_{run_name}.csv"), index=False)
+    test_df.to_csv(join(results_folder, f"test_predictions_{run_name}.csv"), index=False)
 
-    # test_df = test_df.dropna()
+    test_df = test_df.dropna()
     
-    # targets = test_df["Target"].values
+    targets = test_df["Target"].values
     
-    # test_metrics = eval_classification_metrics(targets, test_predictions, 
-    #                                         is_logit=True, 
-    #                                         threshold=optimal_class_threshold)
-    # test_metrics["class_threshold"] = optimal_class_threshold
-    # test_metrics = {"test_IEDB_class/"+k: v for k, v in test_metrics.items()}
+    test_metrics = eval_classification_metrics(targets, test_predictions, 
+                                            is_logit=True, 
+                                            threshold=optimal_class_threshold)
+    test_metrics["class_threshold"] = optimal_class_threshold
+    test_metrics = {"test_IEDB_class/"+k: v for k, v in test_metrics.items()}
     
-    # for k, v in test_metrics.items():
-    #     wandb.run.summary[k] = v
+    for k, v in test_metrics.items():
+        wandb.run.summary[k] = v
 
-    # predicted_classes = (sigmoid(test_df["Prediction"])>optimal_class_threshold).astype(int).values
-    # wandb.log({"test_conf_mat" : wandb.plot.confusion_matrix(probs=None,
-    #                     y_true=targets, preds=predicted_classes,
-    #                     class_names=["Negative", "Positive"])})
+    predicted_classes = (sigmoid(test_df["Prediction"])>optimal_class_threshold).astype(int).values
+    wandb.log({"test_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=targets, preds=predicted_classes,
+                        class_names=["Negative", "Positive"])})
     
-    # with open(join(results_folder, f"test_metrics_{run_name}.json"), "w") as f:
-    #     json.dump(test_metrics, f)
+    with open(join(results_folder, f"test_metrics_{run_name}.json"), "w") as f:
+        json.dump(test_metrics, f)
                     
         
-    # dhlap_dset = SequencesInteractionDataset(dhlap_imm_df, hla_repr=config["hla_repr"])
-    # dhlap_loader = DataLoader(dhlap_dset, batch_size=config['batch_size'])
+    dhlap_dset = SequencesInteractionDataset(dhlap_imm_df, hla_repr=config["hla_repr"])
+    dhlap_loader = DataLoader(dhlap_dset, batch_size=config['batch_size'])
     
-    # test_predictions = []
-    # for ix, test_batch in tqdm(enumerate(dhlap_loader)):        
-    #     peptides, hla_pseudoseqs = test_batch[:2]
-    #     predictions = model(peptides, hla_pseudoseqs).view(-1)
+    test_predictions = []
+    for ix, test_batch in tqdm(enumerate(dhlap_loader)):        
+        peptides, hla_pseudoseqs = test_batch[:2]
+        predictions = model(peptides, hla_pseudoseqs).view(-1)
         
-    #     test_predictions.extend(predictions.detach().cpu().tolist())
+        test_predictions.extend(predictions.detach().cpu().tolist())
         
-    # test_predictions.extend([np.nan]*(len(dhlap_imm_df)-len(test_predictions)))
+    test_predictions.extend([np.nan]*(len(dhlap_imm_df)-len(test_predictions)))
 
     
-    # dhlap_imm_df["Prediction"] = test_predictions
-    # dhlap_imm_df.to_csv(join(results_folder, f"dhlap_test_predictions_{run_name}.csv"), index=False)
+    dhlap_imm_df["Prediction"] = test_predictions
+    dhlap_imm_df.to_csv(join(results_folder, f"dhlap_test_predictions_{run_name}.csv"), index=False)
 
-    # targets = dhlap_imm_df["Label"].values
+    targets = dhlap_imm_df["Label"].values
     
-    # test_metrics = eval_classification_metrics(targets, test_predictions, 
-    #                                         is_logit=True, 
-    #                                         threshold=optimal_class_threshold)
-    # test_metrics["class_threshold"] = optimal_class_threshold
+    test_metrics = eval_classification_metrics(targets, test_predictions, 
+                                            is_logit=True, 
+                                            threshold=optimal_class_threshold)
+    test_metrics["class_threshold"] = optimal_class_threshold
     
-    # test_metrics = {"test_DHLAP_class/"+k: v for k, v in test_metrics.items()}
+    test_metrics = {"test_DHLAP_class/"+k: v for k, v in test_metrics.items()}
     
-    # for k, v in test_metrics.items():
-    #     wandb.run.summary[k] = v
+    for k, v in test_metrics.items():
+        wandb.run.summary[k] = v
         
-    # predicted_classes = (sigmoid(dhlap_imm_df["Prediction"])>optimal_class_threshold).astype(int).values
-    # wandb.log({"test_DHLAP_conf_mat" : wandb.plot.confusion_matrix(probs=None,
-    #                     y_true=targets, preds=predicted_classes,
-    #                     class_names=["DHLAP_Negative", "DHLAP_Positive"])})
+    predicted_classes = (sigmoid(dhlap_imm_df["Prediction"])>optimal_class_threshold).astype(int).values
+    wandb.log({"test_DHLAP_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=targets, preds=predicted_classes,
+                        class_names=["DHLAP_Negative", "DHLAP_Positive"])})
     
-    # with open(join(results_folder, f"test_metrics_dhlap_{run_name}.json"), "w") as f:
-    #     json.dump(test_metrics, f)
+    with open(join(results_folder, f"test_metrics_dhlap_{run_name}.json"), "w") as f:
+        json.dump(test_metrics, f)
         
         
     print("Performing calibration..")
@@ -439,9 +439,7 @@ def train(config=None, init_wandb=True):
         pseudolabels_hlas.extend([hla_alleles[i] for i in ixs])
         pseudolabels_hlas_pseqs.extend([hla_pseudoseqs[i] for i in ixs])
         pseudolabels_predictions.extend([sigmoid(predictions[i])>0.5 for i in ixs])
-        
-        if ix>50:
-            break
+
 
     pseudolabeled_data = pd.DataFrame({"Peptide": pseudolabels_peptides, 
                                        "HLA": pseudolabels_hlas,
