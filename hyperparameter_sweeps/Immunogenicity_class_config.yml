@@ -20,6 +20,8 @@ parameters:
     value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_Beta_noPrior.csv
   dhlap_df:
     value: /home/gvisona/Immunology/processed_data/DHLAP_immunogenicity_data.csv
+  binding_affinity_df:
+    value: /home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv
   lr:
     distribution: log_uniform_values
     min: 1e-8
@@ -101,3 +103,5 @@ parameters:
     value: "/home/gvisona/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt"
   wandb_sweep:
     value: True
+  conformal_alpha:
+    value: 0.1
