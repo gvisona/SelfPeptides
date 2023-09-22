@@ -130,7 +130,7 @@ def train(config=None, init_wandb=True):
         class_weights = [1.0, 1.0]
         bce_pos_weight = 1
         
-    loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([bce_pos_weight]))
+    loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([bce_pos_weight], device=device))
     
     checkpoints_folder = os.path.join(output_folder, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok=True)
