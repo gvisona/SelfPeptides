@@ -77,8 +77,14 @@ def train(config=None, init_wandb=True):
         ba_samples = set(tuple(x) for x in ba_df[["Peptide", "HLA"]].values)
         ba_df = ba_df[ba_df[["Peptide", "HLA"]].apply(tuple, 1).isin(ba_samples.difference(iedb_samples))]
         ba_df["Target"] = 0
-        print(len(ba_df))
         gen_df = pd.concat([gen_df, ba_df[["Peptide", "HLA", "Allele Pseudo-sequence", "Target"]]])
+        
+    ba_samples = set(tuple(x) for x in ba_df[["Peptide", "HLA"]].values)
+    ba_df = ba_df[ba_df[["Peptide", "HLA"]].apply(tuple, 1).isin(ba_samples.difference(iedb_samples))]
+    
+    # gen_samples = set(tuple(x) for x in gen_df[["Peptide", "HLA"]].values)
+    
+    
     train_df = pd.concat([train_df, gen_df])
     train_df = train_df.sample(frac=1, replace=False)
         
@@ -409,7 +415,7 @@ if __name__=="__main__":
     parser.add_argument("--experiment_name", type=str, default="devel")
     parser.add_argument("--experiment_group", type=str, default="Class_plabel")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
-    parser.add_argument("--data_folder", type=str, default="/home/gvisona/Projects/SelfPeptides/outputs/Class_plabel/vital-sweep-58")
+    parser.add_argument("--data_folder", type=str, default="/home/gvisona/Projects/SelfPeptides/outputs/Class_plabel/logical-sweep-6")
     parser.add_argument("--init_checkpoint", default=None)
     parser.add_argument("--force_restart", action=argparse.BooleanOptionalAction, default=True)
     

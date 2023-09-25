@@ -10,7 +10,8 @@ import pprint
 from argparse import ArgumentParser
 import wandb
 # from training_scripts.train_beta_regression_from_BApretrained import train
-from training_scripts.train_immunogenicity_model_classifier_genPL import train
+# from training_scripts.train_immunogenicity_model_classifier_genPL import train
+from training_scripts.train_immunogenicity_model_classifier_wPseudolabels import train
 
 
 if __name__=="__main__":
@@ -18,7 +19,7 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     
-    sweep_id = 'e94xq966'
+    sweep_id = 'auxu891o'
     
     if os.path.exists("/home/gvisona/Projects/SelfPeptides"):
         project_folder = "/home/gvisona/Projects/SelfPeptides"

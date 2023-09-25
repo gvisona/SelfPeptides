@@ -1,0 +1,105 @@
+method: bayes
+metric:
+  goal: maximize
+  name: val_class/MCC
+parameters:
+  accumulate_batches:
+    value: 64
+  batch_size:
+    value: 16
+  cool_down:
+    value: 0.8
+  experiment_group:
+    value: IEDB_Class_JointNetwork
+  experiment_name:
+    value: ClassPL_JointPeptides_MCC
+  immunogenicity_df:
+    value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_Beta_noPrior.csv
+  dhlap_df:
+    value: /home/gvisona/Immunology/processed_data/DHLAP_immunogenicity_data.csv
+  binding_affinity_df:
+    value: /home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv
+  lr:
+    distribution: log_uniform_values
+    min: 5e-7
+    max: 1e-5
+  momentum:
+    value: 0.99
+  nesterov_momentum:
+    value: True
+  max_updates:
+    value: 10000
+  min_frac:
+    value: 0.1
+  project_folder:
+    value: /fast/gvisona/Immunology
+  pseudo_seq_file:
+    value: /home/gvisona/Immunology/data/NetMHCpan_pseudoseq/MHC_pseudo.dat
+  ramp_up:
+    value: 0.1
+  seed:
+    value: 10384
+  test_size:
+    value: 0.15
+  val_size:
+    value: 0.1
+  validate_every_n_updates:
+    value: 16
+  weight_decay:
+    value: 0.00001
+  early_stopping:
+    value: True
+  patience:
+    value: 200
+  PMA_ln:
+    value: True
+  PMA_num_heads:
+    value: 4
+  dropout_p:
+    value: 0.05
+  embedding_dim:
+    value: 512
+  n_attention_layers:
+    value: 2
+  transf_hidden_dim:
+    value: 512
+  num_heads:
+    value: 4
+  mlp_input_dim:
+    value: 2560
+  mlp_hidden_dim:
+    value: 2048
+  mlp_num_layers:
+    values:
+    - 3
+    - 4
+  output_dim: 
+    value: 1
+  hla_repr:
+    value: "Allele Pseudo-sequence"
+  min_subjects_tested:
+    value: 1
+  pretrained_aa_embeddings:
+    value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
+  target_metric:
+    value: MCC
+  use_class_weights:
+    value: True
+  gen_negative_samples:
+    values:
+    - True
+    - False
+  mean_threshold:
+    value: "none"
+  binding_model_config:
+    value: "/home/gvisona/SelfPeptides/trained_models/binding_model/config.json"
+  binding_model_checkpoint:
+    value: "/home/gvisona/SelfPeptides/trained_models/binding_model/checkpoints/001_checkpoint.pt"
+  sns_model_config:
+    value: "/home/gvisona/SelfPeptides/trained_models/sns_model/config.json"
+  sns_model_checkpoint:
+    value: "/home/gvisona/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt"
+  data_folder:
+    value: "/fast/gvisona/Immunology/outputs/IEDB_Class_JointNetwork/GenPL_JointPeptides_MCC/logical-sweep-6"
+  wandb_sweep:
+    value: True
