@@ -4,10 +4,7 @@ metric:
   name: val_class/MCC
 parameters:
   accumulate_batches:
-    values: 
-    - 1
-    - 8
-    - 64
+    value: 64
   batch_size:
     value: 16
   cool_down:
@@ -24,8 +21,8 @@ parameters:
     value: /home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv
   lr:
     distribution: log_uniform_values
-    min: 1e-8
-    max: 5e-6
+    min: 5e-7
+    max: 1e-5
   momentum:
     value: 0.99
   nesterov_momentum:
@@ -73,8 +70,7 @@ parameters:
   mlp_hidden_dim:
     value: 2048
   mlp_num_layers:
-    values: 
-    - 2
+    values:
     - 3
     - 4
   output_dim: 
@@ -88,9 +84,7 @@ parameters:
   target_metric:
     value: MCC
   use_class_weights:
-    values:
-    - False
-    - True
+    value: True
   mean_threshold:
     value: "none"
   binding_model_config:
@@ -104,4 +98,8 @@ parameters:
   wandb_sweep:
     value: True
   conformal_alpha:
-    value: 0.1
+    values: 
+    - 0.05
+    - 0.1
+    - 0.2
+    - 0.3
