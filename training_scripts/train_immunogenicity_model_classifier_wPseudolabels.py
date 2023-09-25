@@ -79,11 +79,6 @@ def train(config=None, init_wandb=True):
         ba_df["Target"] = 0
         gen_df = pd.concat([gen_df, ba_df[["Peptide", "HLA", "Allele Pseudo-sequence", "Target"]]])
         
-    ba_samples = set(tuple(x) for x in ba_df[["Peptide", "HLA"]].values)
-    ba_df = ba_df[ba_df[["Peptide", "HLA"]].apply(tuple, 1).isin(ba_samples.difference(iedb_samples))]
-    
-    # gen_samples = set(tuple(x) for x in gen_df[["Peptide", "HLA"]].values)
-    
     
     train_df = pd.concat([train_df, gen_df])
     train_df = train_df.sample(frac=1, replace=False)
