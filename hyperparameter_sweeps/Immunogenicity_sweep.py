@@ -19,14 +19,14 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
     
-    sweep_id = 'auxu891o'
+    sweep_id = '9ybxwjnx'
     
     if os.path.exists("/home/gvisona/Projects/SelfPeptides"):
         project_folder = "/home/gvisona/Projects/SelfPeptides"
     else:
         project_folder = "/home/gvisona/SelfPeptides"
     
-    with open(os.path.join(project_folder, "hyperparameter_sweeps", "Immunogenicity_class_wPseudolabels_config.yml"), "r") as f:
+    with open(os.path.join(project_folder, "hyperparameter_sweeps", "Immunogenicity_class_wPseudolabels_config_init.yml"), "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
     config = {
         "seed": args.seed,

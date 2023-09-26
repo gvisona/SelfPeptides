@@ -12,7 +12,7 @@ parameters:
   experiment_group:
     value: IEDB_Class_JointNetwork
   experiment_name:
-    value: ClassPL_JointPeptides_MCC
+    value: ClassPL_JointPeptides_MCC_init
   immunogenicity_df:
     value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_Beta_noPrior.csv
   dhlap_df:
@@ -21,7 +21,7 @@ parameters:
     value: /home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv
   lr:
     distribution: log_uniform_values
-    min: 5e-7
+    min: 5e-9
     max: 1e-5
   momentum:
     value: 0.99
@@ -70,9 +70,7 @@ parameters:
   mlp_hidden_dim:
     value: 2048
   mlp_num_layers:
-    values:
-    - 3
-    - 4
+    value: 4
   output_dim: 
     value: 1
   hla_repr:
@@ -103,5 +101,7 @@ parameters:
     value: "/home/gvisona/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt"
   data_folder:
     value: "/fast/gvisona/Immunology/outputs/IEDB_Class_JointNetwork/GenPL_JointPeptides_MCC/logical-sweep-6"
+  init_checkpoint:
+    value: "/fast/gvisona/Immunology/outputs/IEDB_Class_JointNetwork/ClassPL_JointPeptides_MCC/ancient-sweep-48/checkpoints/001_checkpoint.pt"
   wandb_sweep:
     value: True
