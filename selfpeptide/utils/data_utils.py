@@ -366,6 +366,7 @@ def load_binding_affinity_dataframes_jointseqs(config, split_data=True):
         ligand_atlas_binding_df = ligand_atlas_binding_df.dropna().reset_index(drop=True)
         ligand_atlas_binding_df = filter_peptide_dataset(ligand_atlas_binding_df, sorted_vocabulary)
 
+        
     # ba_df
     ba_df["Stratification_index"] = ba_df["HLA"] + "_" + ba_df["Label"].astype(str)
     if not split_data:
@@ -382,6 +383,12 @@ def load_binding_affinity_dataframes_jointseqs(config, split_data=True):
     if res_df is not None:
         train_ba_df = pd.concat([train_ba_df, res_df])
 
+    if ligand_atlas_binding_df is not None:
+        # Filter to remove samples from training set
+        dhlap_samples = set(tuple(x) for x in train_ba_df[["Peptide", "HLA"]].values).union(set(tuple(x) for x in val_ba_df[["Peptide", "HLA"]].values))
+        la_samples = set(tuple(x) for x in ligand_atlas_binding_df[["Peptide", "HLA"]].values)
+        ligand_atlas_binding_df = ligand_atlas_binding_df[ligand_atlas_binding_df[["Peptide", "HLA"]].apply(tuple, 1).isin(la_samples.difference(dhlap_samples))]
+    
     return train_ba_df, val_ba_df, test_ba_df, ligand_atlas_binding_df
 
 class SequencesInteractionDataset(Dataset):
