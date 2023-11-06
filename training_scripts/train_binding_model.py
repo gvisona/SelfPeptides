@@ -170,7 +170,7 @@ def train(config=None, init_wandb=True):
     # lr_lambda = lambda s: lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"], 
     #                                   ramp_up=config['ramp_up'], cool_down=config['cool_down'])
     
-    if (resume_checkpoint_path is None and config["init_checkpoint"] is None) or config["force_warmup"]:
+    if (resume_checkpoint_path is None and config.get("init_checkpoint", None) is None) or config["force_warmup"]:
         def lr_lambda(s): return warmup_constant_lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
                                          ramp_up=config['ramp_up'])
     else:
