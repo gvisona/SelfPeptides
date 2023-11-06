@@ -14,24 +14,42 @@ from tqdm import tqdm
 import sys
 from selfpeptide.utils.training_utils import eval_classification_metrics, lr_schedule, warmup_constant_lr_schedule, get_class_weights, sigmoid
 from selfpeptide.model.binding_affinity_classifier import Peptide_HLA_BindingClassifier
-from selfpeptide.utils.data_utils import SequencesInteractionDataset, load_binding_affinity_dataframes
+from selfpeptide.utils.data_utils import SequencesInteractionDataset, load_binding_affinity_dataframes_jointseqs
 
 
-class WeightedBinding_Loss(nn.Module):
-    def __init__(self, class_weights=[1.0, 1.0], device="cpu"):
+
+
+# class WeightedBinding_Loss(nn.Module):
+#     def __init__(self, class_weights=[1.0, 1.0], device="cpu"):
+#         super().__init__()
+#         self.device = device
+#         self.class_weights = torch.tensor(class_weights).to(device)
+#         self.bce_logits = nn.BCEWithLogitsLoss(reduction="none")
+        
+#         # self.mse = nn.MSELoss()
+        
+#     def forward(self, predictions, targets):
+#         weights = torch.gather(self.class_weights, 0, targets.long())
+#         loss = self.bce_logits(predictions.view(-1), targets)
+#         loss = torch.mean(loss * weights)
+#         return loss
+        
+class LS_CELoss(nn.Module):
+    def __init__(self, ls_alpha=0.1, class_weights=[1.0, 1.0], device="cpu"):
         super().__init__()
-        self.device = device
+        self.ls_alpha = ls_alpha
+        self.ce_loss = nn.CrossEntropyLoss(reduction="none")
         self.class_weights = torch.tensor(class_weights).to(device)
-        self.bce_logits = nn.BCEWithLogitsLoss(reduction="none")
         
-        self.mse = nn.MSELoss()
-        
-    def forward(self, predictions, targets):
-        weights = torch.gather(self.class_weights, 0, targets.long())
-        loss = self.bce_logits(predictions.view(-1), targets)
+    def forward(self, predicted_pos_logits, class_targets):
+        expanded_logits = torch.vstack([-predicted_pos_logits, predicted_pos_logits]).transpose(0, 1)
+        targets_probs = torch.ones_like(expanded_logits)*self.ls_alpha/2
+        targets_probs[torch.arange(len(targets_probs)), class_targets.long()] += (1-self.ls_alpha)
+        weights = torch.gather(self.class_weights, 0, class_targets.long())
+        loss = self.ce_loss(expanded_logits, targets_probs)
         loss = torch.mean(loss * weights)
         return loss
-        
+
         
 def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
@@ -89,7 +107,7 @@ def train(config=None, init_wandb=True):
     wandb.run.summary["checkpoints/Checkpoint_path"] = checkpoint_path
     checkpoint_label = checkpoint_fname.split(".")[0]
 
-    train_ba_df, val_ba_df, test_ba_df = load_binding_affinity_dataframes(config)
+    train_ba_df, val_ba_df, test_ba_df, ligand_atlas_binding_df = load_binding_affinity_dataframes_jointseqs(config)
 
     train_ba_df.to_csv(join(output_folder, f"train_df_{run_name}.csv"), index=False)
     val_ba_df.to_csv(join(output_folder, f"val_df_{run_name}.csv"), index=False)
@@ -98,13 +116,17 @@ def train(config=None, init_wandb=True):
     wandb.run.summary["pos_weight"] = pos_weight
     wandb.run.summary["neg_weight"] = neg_weight
     
-    train_dset = SequencesInteractionDataset(train_ba_df, hla_repr=config["hla_repr"])
-    val_dset = SequencesInteractionDataset(val_ba_df, hla_repr=config["hla_repr"])
-    test_dset = SequencesInteractionDataset(test_ba_df, hla_repr=config["hla_repr"])
+    # config["hla_repr"]
+    
+    train_dset = SequencesInteractionDataset(train_ba_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
+    val_dset = SequencesInteractionDataset(val_ba_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
+    test_dset = SequencesInteractionDataset(test_ba_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
+    test_ligand_atlas_dset = SequencesInteractionDataset(ligand_atlas_binding_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
 
     train_loader = DataLoader(train_dset, batch_size=config['batch_size'], drop_last=True, shuffle=True)
     val_loader = DataLoader(val_dset, batch_size=config['batch_size'], drop_last=False, shuffle=False)
     test_loader = DataLoader(test_dset, batch_size=config['batch_size'], drop_last=False)
+    test_ligand_atlas_loader = DataLoader(test_ligand_atlas_dset, batch_size=config['batch_size'], drop_last=False)
 
 
     model = Peptide_HLA_BindingClassifier(config, device)
@@ -115,7 +137,7 @@ def train(config=None, init_wandb=True):
         p.register_hook(lambda grad: torch.clamp(grad, -1, 1))
         
     resume_checkpoint_path = None # TODO REMOVE
-    if config["init_checkpoint"] is not None and resume_checkpoint_path is None:
+    if config.get("init_checkpoint", None) is not None and resume_checkpoint_path is None:
         print("Initializing model using checkpoint {}".format(config["init_checkpoint"]))
         model.load_state_dict(torch.load(config["init_checkpoint"]))
         wandb.run.summary["checkpoints/Init_checkpoint"] = config["init_checkpoint"]
@@ -131,7 +153,7 @@ def train(config=None, init_wandb=True):
     max_iters = config["max_updates"] * config["accumulate_batches"] + 1
     
     # binding_loss = CustomBindingLoss()WeightedBinding_Loss
-    bce_loss = WeightedBinding_Loss(class_weights=[neg_weight, pos_weight], device=device)
+    ls_loss = LS_CELoss(ls_alpha=config.get("ls_alpha", 0.1), class_weights=[neg_weight, pos_weight], device=device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                                 nesterov=config.get("nesterov_momentum", False),
@@ -167,13 +189,13 @@ def train(config=None, init_wandb=True):
             gen_train = iter(train_loader)
             train_batch = next(gen_train)
 
-        peptides, hla_pseudoseqs = train_batch[:2]
+        peptides, hla_pseudoseqs, hla_protein_seq = train_batch[:3]
         batch_targets = train_batch[-1].float().to(device)
         
-        predictions, _ = model(peptides, hla_pseudoseqs)
-        loss = bce_loss(predictions, batch_targets)
+        predicted_logits, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
+        loss = ls_loss(predicted_logits, batch_targets)
 
-        train_loss_logs = {"train/binding_BCE": loss.item()}
+        train_loss_logs = {"train/binding_CE": loss.item()}
         
         if avg_train_logs is None:
             avg_train_logs = train_loss_logs.copy()
@@ -199,12 +221,12 @@ def train(config=None, init_wandb=True):
             
             val_predictions = []
             for ix, val_batch in enumerate(val_loader):
-                peptides, hla_pseudoseqs = val_batch[:2]
+                peptides, hla_pseudoseqs, hla_protein_seq = val_batch[:3]
                 batch_targets = val_batch[-1].float().to(device)
         
-                predictions, _ = model(peptides, hla_pseudoseqs)
-                loss = bce_loss(predictions, batch_targets)
-                val_loss_logs = {"val/binding_BCE": loss.item()}
+                predictions, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
+                loss = ls_loss(predictions, batch_targets)
+                val_loss_logs = {"val/binding_CE": loss.item()}
 
                 
                 if avg_val_logs is None:
@@ -227,7 +249,7 @@ def train(config=None, init_wandb=True):
                                                     is_logit=True, threshold=0.5)
             val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
             
-            epoch_val_loss = avg_val_logs["val/binding_BCE"] 
+            epoch_val_loss = avg_val_logs["val/binding_CE"] 
             if epoch_val_loss<best_val_loss:
                 best_val_loss = epoch_val_loss
                 best_loss_iter = n_iter
@@ -247,7 +269,7 @@ def train(config=None, init_wandb=True):
                 avg_train_logs[k] /= (config['accumulate_batches'] * config["validate_every_n_updates"])
             
             current_lr = scheduler.get_last_lr()[0]
-            val_train_difference = avg_val_logs["val/binding_BCE"] - avg_train_logs["train/binding_BCE"]
+            val_train_difference = avg_val_logs["val/binding_CE"] - avg_train_logs["train/binding_CE"]
             logs = {"learning_rate": current_lr, 
                     "accumulated_batch": n_update, 
                     "train_val_difference": val_train_difference,
@@ -274,9 +296,9 @@ def train(config=None, init_wandb=True):
     print("Testing model..")
     test_predictions = []
     for ix, test_batch in tqdm(enumerate(test_loader)):
-        peptides, hla_pseudoseqs = test_batch[:2]
+        peptides, hla_pseudoseqs, hla_protein_seq = test_batch[:3]
         batch_targets = test_batch[-1].float().to(device)
-        predictions, _ = model(peptides, hla_pseudoseqs)
+        predictions, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
         
 
         pred_ba = predictions.detach().cpu().squeeze().tolist()
@@ -306,6 +328,40 @@ def train(config=None, init_wandb=True):
         json.dump(test_metrics, f)
         
         
+    print("Testing model on Ligand Atlas..")
+    test_la_predictions = []
+    for ix, test_batch in tqdm(enumerate(test_ligand_atlas_loader)):
+        peptides, hla_pseudoseqs, hla_protein_seq = test_batch[:3]
+        batch_targets = test_batch[-1].float().to(device)
+        predictions, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
+        
+ 
+        if not isinstance(pred_ba, list):
+            pred_ba = [pred_ba]
+        test_la_predictions.extend(pred_ba)
+        
+        
+    test_la_predictions.extend([np.nan]*(len(ligand_atlas_binding_df)-len(test_la_predictions)))
+    ligand_atlas_binding_df["Predicted Logits"] = test_la_predictions
+    ligand_atlas_binding_df.to_csv(join(output_folder, f"test_LA_predictions_{run_name}.csv"), index=False)
+    ligand_atlas_binding_df = ligand_atlas_binding_df.dropna()
+    
+    targets = ligand_atlas_binding_df["Label"].values
+    test_la_metrics = eval_classification_metrics(targets, ligand_atlas_binding_df["Predicted Logits"].values, 
+                                               is_logit=True, threshold=0.5)
+    
+    predicted_classes = (sigmoid(ligand_atlas_binding_df["Predicted Logits"])>0.5).astype(int).values
+    wandb.log({"conf_mat_LA" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=targets, preds=predicted_classes,
+                        class_names=["LA_nonbinder", "LA_binder"])})
+
+    for k, v in test_la_metrics.items():
+        wandb.run.summary["LigandAtlas/"+k] = v
+    
+    with open(join(output_folder, f"test_LA_metrics_{run_name}.json"), "w") as f:
+        json.dump(test_la_metrics, f)
+        
+        
     print("Training complete!")
     
     return model
@@ -316,7 +372,7 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run_number", type=int, default=0)
     parser.add_argument("--experiment_name", type=str, default="devel_ba_separate")
-    parser.add_argument("--experiment_group", type=str, default="BindingAffinity_DHLAP")
+    parser.add_argument("--experiment_group", type=str, default="BindingAffinity_DHLAP_preT5")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     parser.add_argument("--init_checkpoint", default=None)
     
@@ -324,12 +380,12 @@ if __name__=="__main__":
     parser.add_argument("--PMA_num_heads", type=int, default=2)
     parser.add_argument("--dropout_p", type=float, default=0.15)
     parser.add_argument("--embedding_dim", type=int, default=512)
+    parser.add_argument("--hla_embedding_dim", type=int, default=1024)
     parser.add_argument("--n_attention_layers", type=int, default=1)
     parser.add_argument("--num_heads", type=int, default=2)
-    
     parser.add_argument("--regression_weight", type=float, default=1.0)
     parser.add_argument("--early_stopping", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--hla_repr", type=str, default="Allele Pseudo-sequence")
+    # parser.add_argument("--hla_repr", type=str, default="Allele Pseudo-sequence")
     parser.add_argument("--transf_hidden_dim", type=int, default=32)
     parser.add_argument("--output_dim", type=int, default=1)
 
@@ -338,10 +394,21 @@ if __name__=="__main__":
     
     
     parser.add_argument("--binding_affinity_df", type=str, 
-                        default="/home/gvisona/Projects/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv")    
-    parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat")
-    parser.add_argument("--pretrained_aa_embeddings", type=str)
-    #                     default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy")
+                        default="/home/gvisona/Projects/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv")  
+    parser.add_argument("--ligand_atlas_binding_df", type=str, 
+                        default="/home/gvisona/Projects/SelfPeptides/processed_data/Binding_Affinity/HLA_Ligand_Atlas_processed.csv")      
+    parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv")
+    parser.add_argument("--hla_prot_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv")
+    parser.add_argument("--pretrained_aa_embeddings", type=str, 
+                        default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy")
+        
+        
+    parser.add_argument("--pseudoseq_seq2idx_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/pseudosequence2idx.json")
+    parser.add_argument("--pseudoseq_embeddings_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseqs_T5_embeddings.npy")
+    parser.add_argument("--protein_seq2idx_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/prot_sequence2idx.json")
+    parser.add_argument("--protein_embeddings_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_T5_embeddings.npy")
+
+    parser.add_argument("--ls_alpha", type=float, default=0.1)
 
     parser.add_argument("--max_updates", type=int, default=5)
     parser.add_argument("--patience", type=int, default=1000)

@@ -342,10 +342,52 @@ def load_binding_affinity_dataframes(config, split_data=True):
         
     return train_ba_df, val_ba_df, test_ba_df
 
+
+def load_binding_affinity_dataframes_jointseqs(config, split_data=True):
+    ps_df = pd.read_csv(config['pseudo_seq_file'])
+    prot_df = pd.read_csv(config['hla_prot_seq_file'])
+
+
+    hla_pseq_mapping = dict(ps_df[["HLA", "sequence"]].values)
+    hla_prot_mapping = dict(prot_df[["HLA", "sequence"]].values)
+    hla_prot_mapping
+    ba_df = pd.read_csv(config['binding_affinity_df'])
+    ba_df["Allele Pseudo-sequence"] = ba_df["HLA"].str.replace("*", "", regex=False).map(hla_pseq_mapping)
+    ba_df["Allele Protein sequence"] = ba_df["HLA"].str.replace("*", "", regex=False).map(hla_prot_mapping)
+    ba_df = ba_df.dropna().reset_index(drop=True)
+    ba_df = filter_peptide_dataset(ba_df, sorted_vocabulary)
+
+
+    ligand_atlas_binding_df = config.get("ligand_atlas_binding_df", None)
+    if ligand_atlas_binding_df is not None:
+        ligand_atlas_binding_df = pd.read_csv(ligand_atlas_binding_df)
+        ligand_atlas_binding_df["Allele Pseudo-sequence"] = ligand_atlas_binding_df["HLA"].str.replace("*", "", regex=False).map(hla_pseq_mapping)
+        ligand_atlas_binding_df["Allele Protein sequence"] = ligand_atlas_binding_df["HLA"].str.replace("*", "", regex=False).map(hla_prot_mapping)
+        ligand_atlas_binding_df = ligand_atlas_binding_df.dropna().reset_index(drop=True)
+        ligand_atlas_binding_df = filter_peptide_dataset(ligand_atlas_binding_df, sorted_vocabulary)
+
+    # ba_df
+    ba_df["Stratification_index"] = ba_df["HLA"] + "_" + ba_df["Label"].astype(str)
+    if not split_data:
+        return ba_df, ligand_atlas_binding_df
+
+    ix = ba_df["Stratification_index"].value_counts()
+    low_count_labels = ix[ix<3].index
+    res_df = ba_df[ba_df["Stratification_index"].isin(low_count_labels)]
+    ba_df = ba_df[~ba_df["Stratification_index"].isin(low_count_labels)]
+
+
+    trainval_ba_df, test_ba_df = train_test_split(ba_df, test_size=config["test_size"], stratify=ba_df["Stratification_index"], random_state=config['seed'], shuffle=True)
+    train_ba_df, val_ba_df = train_test_split(trainval_ba_df, test_size=config["val_size"], stratify=trainval_ba_df["Stratification_index"], random_state=config['seed'], shuffle=True)
+    if res_df is not None:
+        train_ba_df = pd.concat([train_ba_df, res_df])
+
+    return train_ba_df, val_ba_df, test_ba_df, ligand_atlas_binding_df
+
 class SequencesInteractionDataset(Dataset):
-    def __init__(self, df, hla_repr="Allele Pseudo-sequence", target_label="Label"):        
+    def __init__(self, df, hla_repr=["Allele Pseudo-sequence"], target_label="Label"):        
         super().__init__()
-        cols = ["Peptide", hla_repr, target_label]
+        cols = ["Peptide", *hla_repr, target_label]
         self.data_matrix = df[cols].values.tolist()
     
     def __len__(self):

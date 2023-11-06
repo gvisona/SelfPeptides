@@ -3,6 +3,7 @@ processed_data/
 outputs/
 wandb/
 Experimental\ notebooks
+experimental_notebooks
 .vscode/
 trained_models/
 

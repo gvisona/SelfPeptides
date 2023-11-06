@@ -5,6 +5,8 @@ metric:
 parameters:
   embedding_dim:
     value: 512
+  hla_embedding_dim:
+    value: 1024
   PMA_num_heads:
     value: 4
   PMA_ln:
@@ -21,12 +23,14 @@ parameters:
     value: 16
   binding_affinity_df:
     value: /home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv
+  ligand_atlas_binding_df:
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/Binding_Affinity/HLA_Ligand_Atlas_processed.csv"
   cool_down:
     value: 0.8
   experiment_group:
-    value: DHLAP_binding_affinity_training
+    value: DHLAP_binding_affinity_training_LS
   experiment_name:
-    value: BA_model_training_init
+    value: BA_model_training_LabelSmoothing
   lr:
     distribution: log_uniform_values 
     max: 5.0e-4
@@ -52,7 +56,17 @@ parameters:
   project_folder:
     value: /fast/gvisona/SelfPeptides
   pseudo_seq_file:
-    value: /home/gvisona/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv"
+  hla_prot_seq_file:
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv"
+  pseudoseq_seq2idx_file:
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/pseudosequence2idx.json"
+  pseudoseq_embeddings_file:
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseqs_T5_embeddings.npy"
+  protein_seq2idx_file:
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/prot_sequence2idx.json"
+  protein_embeddings_file:
+    value: "/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_T5_embeddings.npy"
   ramp_up:
     value: 0.1
   seed:
@@ -73,7 +87,12 @@ parameters:
     value: 200
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
-  init_checkpoint:
-    value: "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt"
-  hla_repr:
-    value: "Allele Pseudo-sequence"
+  ls_alpha:
+    values:
+    - 0.05
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+  wandb_sweep:
+    value: True
