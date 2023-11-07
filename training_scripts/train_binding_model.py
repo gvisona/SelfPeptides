@@ -41,10 +41,10 @@ class LS_CELoss(nn.Module):
         self.class_weights = torch.tensor(class_weights).to(device)
         
     def forward(self, predicted_pos_logits, class_targets):
-        expanded_logits = torch.vstack([-predicted_pos_logits, predicted_pos_logits]).transpose(0, 1)
+        expanded_logits = torch.vstack([-predicted_pos_logits.view(-1), predicted_pos_logits.view(-1)]).transpose(0, 1)
         targets_probs = torch.ones_like(expanded_logits)*self.ls_alpha/2
-        targets_probs[torch.arange(len(targets_probs)), class_targets.long()] += (1-self.ls_alpha)
-        weights = torch.gather(self.class_weights, 0, class_targets.long())
+        targets_probs[torch.arange(len(targets_probs)), class_targets.view(-1).long()] += (1-self.ls_alpha)
+        weights = torch.gather(self.class_weights, 0, class_targets.view(-1).long())
         loss = self.ce_loss(expanded_logits, targets_probs)
         loss = torch.mean(loss * weights)
         return loss
