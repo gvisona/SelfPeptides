@@ -30,7 +30,7 @@ parameters:
   experiment_group:
     value: DHLAP_binding_affinity_training_LS
   experiment_name:
-    value: Binding_model_training_LS
+    value: Binding_model_training_learning_test
   lr:
     distribution: log_uniform_values 
     max: 5.0e-4

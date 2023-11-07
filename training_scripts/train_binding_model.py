@@ -19,20 +19,20 @@ from selfpeptide.utils.data_utils import SequencesInteractionDataset, load_bindi
 
 
 
-# class WeightedBinding_Loss(nn.Module):
-#     def __init__(self, class_weights=[1.0, 1.0], device="cpu"):
-#         super().__init__()
-#         self.device = device
-#         self.class_weights = torch.tensor(class_weights).to(device)
-#         self.bce_logits = nn.BCEWithLogitsLoss(reduction="none")
+class WeightedBinding_Loss(nn.Module):
+    def __init__(self, class_weights=[1.0, 1.0], device="cpu"):
+        super().__init__()
+        self.device = device
+        self.class_weights = torch.tensor(class_weights).to(device)
+        self.bce_logits = nn.BCEWithLogitsLoss(reduction="none")
         
-#         # self.mse = nn.MSELoss()
+        # self.mse = nn.MSELoss()
         
-#     def forward(self, predictions, targets):
-#         weights = torch.gather(self.class_weights, 0, targets.long())
-#         loss = self.bce_logits(predictions.view(-1), targets)
-#         loss = torch.mean(loss * weights)
-#         return loss
+    def forward(self, predictions, targets):
+        weights = torch.gather(self.class_weights, 0, targets.long())
+        loss = self.bce_logits(predictions.view(-1), targets)
+        loss = torch.mean(loss * weights)
+        return loss
         
 class LS_CELoss(nn.Module):
     def __init__(self, ls_alpha=0.1, class_weights=[1.0, 1.0], device="cpu"):
@@ -153,7 +153,8 @@ def train(config=None, init_wandb=True):
     max_iters = config["max_updates"] * config["accumulate_batches"] + 1
     
     # binding_loss = CustomBindingLoss()WeightedBinding_Loss
-    ls_loss = LS_CELoss(ls_alpha=config.get("ls_alpha", 0.1), class_weights=[neg_weight, pos_weight], device=device)
+    # ls_loss = LS_CELoss(ls_alpha=config.get("ls_alpha", 0.1), class_weights=[neg_weight, pos_weight], device=device)
+    ls_loss = WeightedBinding_Loss(class_weights=[1.0, 1.0], device="cpu")
 
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                                 nesterov=config.get("nesterov_momentum", False),
@@ -224,8 +225,8 @@ def train(config=None, init_wandb=True):
                 peptides, hla_pseudoseqs, hla_protein_seq = val_batch[:3]
                 batch_targets = val_batch[-1].float().to(device)
         
-                predictions, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
-                loss = ls_loss(predictions, batch_targets)
+                predicted_logits, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
+                loss = ls_loss(predicted_logits, batch_targets)
                 val_loss_logs = {"val/binding_CE": loss.item()}
 
                 
@@ -235,7 +236,7 @@ def train(config=None, init_wandb=True):
                     for k in val_loss_logs:
                         avg_val_logs[k] += val_loss_logs[k]
 
-                pred_ba = predictions.detach().cpu().squeeze().tolist()
+                pred_ba = predicted_logits.detach().cpu().squeeze().tolist()
                 if not isinstance(pred_ba, list):
                     pred_ba = [pred_ba]
                 val_predictions.extend(pred_ba)        
