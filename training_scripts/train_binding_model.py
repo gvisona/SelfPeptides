@@ -26,7 +26,6 @@ class WeightedBinding_Loss(nn.Module):
         self.class_weights = torch.tensor(class_weights).to(device)
         self.bce_logits = nn.BCEWithLogitsLoss(reduction="none")
         
-        # self.mse = nn.MSELoss()
         
     def forward(self, predictions, targets):
         weights = torch.gather(self.class_weights, 0, targets.long())
@@ -154,7 +153,7 @@ def train(config=None, init_wandb=True):
     
     # binding_loss = CustomBindingLoss()WeightedBinding_Loss
     # ls_loss = LS_CELoss(ls_alpha=config.get("ls_alpha", 0.1), class_weights=[neg_weight, pos_weight], device=device)
-    ls_loss = WeightedBinding_Loss(class_weights=[1.0, 1.0], device="cpu")
+    ls_loss = WeightedBinding_Loss(class_weights=[1.0, 1.0], device=device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                                 nesterov=config.get("nesterov_momentum", False),
