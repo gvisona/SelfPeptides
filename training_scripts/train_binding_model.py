@@ -152,8 +152,8 @@ def train(config=None, init_wandb=True):
     max_iters = config["max_updates"] * config["accumulate_batches"] + 1
     
     # binding_loss = CustomBindingLoss()WeightedBinding_Loss
-    # ls_loss = LS_CELoss(ls_alpha=config.get("ls_alpha", 0.1), class_weights=[neg_weight, pos_weight], device=device)
-    ls_loss = WeightedBinding_Loss(class_weights=[1.0, 1.0], device=device)
+    ls_loss = LS_CELoss(ls_alpha=config.get("ls_alpha", 0.1), class_weights=[neg_weight, pos_weight], device=device)
+    # ls_loss = WeightedBinding_Loss(class_weights=[1.0, 1.0], device=device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                                 nesterov=config.get("nesterov_momentum", False),
