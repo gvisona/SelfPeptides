@@ -30,11 +30,11 @@ parameters:
   experiment_group:
     value: DHLAP_binding_affinity_training_LS
   experiment_name:
-    value: Binding_model_LS_lrfind_loss
+    value: Binding_model_LS_concatLA
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-3
-    min: 5e-6
+    max: 6.0e-4
+    min: 5e-7
   momentum:
     value: 0.9
   nesterov_momentum:
@@ -88,7 +88,6 @@ parameters:
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
   ls_alpha:
-    values:
-    - 0.1
+    value: 0.1
   wandb_sweep:
     value: True

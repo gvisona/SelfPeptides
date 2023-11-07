@@ -106,7 +106,7 @@ def train(config=None, init_wandb=True):
     wandb.run.summary["checkpoints/Checkpoint_path"] = checkpoint_path
     checkpoint_label = checkpoint_fname.split(".")[0]
 
-    train_ba_df, val_ba_df, test_ba_df, ligand_atlas_binding_df = load_binding_affinity_dataframes_jointseqs(config)
+    train_ba_df, val_ba_df, test_ba_df = load_binding_affinity_dataframes_jointseqs(config)
 
     train_ba_df.to_csv(join(output_folder, f"train_df_{run_name}.csv"), index=False)
     val_ba_df.to_csv(join(output_folder, f"val_df_{run_name}.csv"), index=False)
@@ -115,18 +115,13 @@ def train(config=None, init_wandb=True):
     wandb.run.summary["pos_weight"] = pos_weight
     wandb.run.summary["neg_weight"] = neg_weight
     
-    # config["hla_repr"]
-    
     train_dset = SequencesInteractionDataset(train_ba_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     val_dset = SequencesInteractionDataset(val_ba_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     test_dset = SequencesInteractionDataset(test_ba_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
-    test_ligand_atlas_dset = SequencesInteractionDataset(ligand_atlas_binding_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
 
     train_loader = DataLoader(train_dset, batch_size=config['batch_size'], drop_last=True, shuffle=True)
     val_loader = DataLoader(val_dset, batch_size=config['batch_size'], drop_last=False, shuffle=False)
     test_loader = DataLoader(test_dset, batch_size=config['batch_size'], drop_last=False)
-    test_ligand_atlas_loader = DataLoader(test_ligand_atlas_dset, batch_size=config['batch_size'], drop_last=False)
-
 
     model = Peptide_HLA_BindingClassifier(config, device)
     model.to(device)
@@ -328,38 +323,38 @@ def train(config=None, init_wandb=True):
         json.dump(test_metrics, f)
         
         
-    print("Testing model on Ligand Atlas..")
-    test_la_predictions = []
-    for ix, test_batch in tqdm(enumerate(test_ligand_atlas_loader)):
-        peptides, hla_pseudoseqs, hla_protein_seq = test_batch[:3]
-        batch_targets = test_batch[-1].float().to(device)
-        predictions, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
+    # print("Testing model on Ligand Atlas..")
+    # test_la_predictions = []
+    # for ix, test_batch in tqdm(enumerate(test_ligand_atlas_loader)):
+    #     peptides, hla_pseudoseqs, hla_protein_seq = test_batch[:3]
+    #     batch_targets = test_batch[-1].float().to(device)
+    #     predictions, _ = model(peptides, hla_pseudoseqs, hla_protein_seq)
         
  
-        if not isinstance(pred_ba, list):
-            pred_ba = [pred_ba]
-        test_la_predictions.extend(pred_ba)
+    #     if not isinstance(pred_ba, list):
+    #         pred_ba = [pred_ba]
+    #     test_la_predictions.extend(pred_ba)
         
         
-    test_la_predictions.extend([np.nan]*(len(ligand_atlas_binding_df)-len(test_la_predictions)))
-    ligand_atlas_binding_df["Predicted Logits"] = test_la_predictions
-    ligand_atlas_binding_df.to_csv(join(output_folder, f"test_LA_predictions_{run_name}.csv"), index=False)
-    ligand_atlas_binding_df = ligand_atlas_binding_df.dropna()
+    # test_la_predictions.extend([np.nan]*(len(ligand_atlas_binding_df)-len(test_la_predictions)))
+    # ligand_atlas_binding_df["Predicted Logits"] = test_la_predictions
+    # ligand_atlas_binding_df.to_csv(join(output_folder, f"test_LA_predictions_{run_name}.csv"), index=False)
+    # ligand_atlas_binding_df = ligand_atlas_binding_df.dropna()
     
-    targets = ligand_atlas_binding_df["Label"].values
-    test_la_metrics = eval_classification_metrics(targets, ligand_atlas_binding_df["Predicted Logits"].values, 
-                                               is_logit=True, threshold=0.5)
+    # targets = ligand_atlas_binding_df["Label"].values
+    # test_la_metrics = eval_classification_metrics(targets, ligand_atlas_binding_df["Predicted Logits"].values, 
+    #                                            is_logit=True, threshold=0.5)
     
-    predicted_classes = (sigmoid(ligand_atlas_binding_df["Predicted Logits"])>0.5).astype(int).values
-    wandb.log({"conf_mat_LA" : wandb.plot.confusion_matrix(probs=None,
-                        y_true=targets, preds=predicted_classes,
-                        class_names=["LA_nonbinder", "LA_binder"])})
+    # predicted_classes = (sigmoid(ligand_atlas_binding_df["Predicted Logits"])>0.5).astype(int).values
+    # wandb.log({"conf_mat_LA" : wandb.plot.confusion_matrix(probs=None,
+    #                     y_true=targets, preds=predicted_classes,
+    #                     class_names=["LA_nonbinder", "LA_binder"])})
 
-    for k, v in test_la_metrics.items():
-        wandb.run.summary["LigandAtlas/"+k] = v
+    # for k, v in test_la_metrics.items():
+    #     wandb.run.summary["LigandAtlas/"+k] = v
     
-    with open(join(output_folder, f"test_LA_metrics_{run_name}.json"), "w") as f:
-        json.dump(test_la_metrics, f)
+    # with open(join(output_folder, f"test_LA_metrics_{run_name}.json"), "w") as f:
+    #     json.dump(test_la_metrics, f)
         
         
     print("Training complete!")

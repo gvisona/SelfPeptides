@@ -343,6 +343,7 @@ def load_binding_affinity_dataframes(config, split_data=True):
     return train_ba_df, val_ba_df, test_ba_df
 
 
+
 def load_binding_affinity_dataframes_jointseqs(config, split_data=True):
     ps_df = pd.read_csv(config['pseudo_seq_file'])
     prot_df = pd.read_csv(config['hla_prot_seq_file'])
@@ -356,21 +357,25 @@ def load_binding_affinity_dataframes_jointseqs(config, split_data=True):
     ba_df["Allele Protein sequence"] = ba_df["HLA"].str.replace("*", "", regex=False).map(hla_prot_mapping)
     ba_df = ba_df.dropna().reset_index(drop=True)
     ba_df = filter_peptide_dataset(ba_df, sorted_vocabulary)
+    ba_df = ba_df[["HLA", "Peptide", "Label", "Allele Pseudo-sequence", "Allele Protein sequence"]]
+    
+    ligand_atlas_binding_df = pd.read_csv(config["ligand_atlas_binding_df"])
+    ligand_atlas_binding_df["Allele Pseudo-sequence"] = ligand_atlas_binding_df["HLA"].str.replace("*", "", regex=False).map(hla_pseq_mapping)
+    ligand_atlas_binding_df["Allele Protein sequence"] = ligand_atlas_binding_df["HLA"].str.replace("*", "", regex=False).map(hla_prot_mapping)
+    ligand_atlas_binding_df = ligand_atlas_binding_df.dropna().reset_index(drop=True)
+    ligand_atlas_binding_df = filter_peptide_dataset(ligand_atlas_binding_df, sorted_vocabulary)
 
-
-    ligand_atlas_binding_df = config.get("ligand_atlas_binding_df", None)
-    if ligand_atlas_binding_df is not None:
-        ligand_atlas_binding_df = pd.read_csv(ligand_atlas_binding_df)
-        ligand_atlas_binding_df["Allele Pseudo-sequence"] = ligand_atlas_binding_df["HLA"].str.replace("*", "", regex=False).map(hla_pseq_mapping)
-        ligand_atlas_binding_df["Allele Protein sequence"] = ligand_atlas_binding_df["HLA"].str.replace("*", "", regex=False).map(hla_prot_mapping)
-        ligand_atlas_binding_df = ligand_atlas_binding_df.dropna().reset_index(drop=True)
-        ligand_atlas_binding_df = filter_peptide_dataset(ligand_atlas_binding_df, sorted_vocabulary)
-
-        
+    # Filter to remove duplicate samples 
+    dhlap_samples = set(tuple(x) for x in ba_df[["Peptide", "HLA"]].values)
+    la_samples = set(tuple(x) for x in ligand_atlas_binding_df[["Peptide", "HLA"]].values)
+    ligand_atlas_binding_df = ligand_atlas_binding_df[ligand_atlas_binding_df[["Peptide", "HLA"]].apply(tuple, 1).isin(la_samples.difference(dhlap_samples))]
+    
+    ba_df = pd.concat([ba_df, ligand_atlas_binding_df])
+    
     # ba_df
     ba_df["Stratification_index"] = ba_df["HLA"] + "_" + ba_df["Label"].astype(str)
     if not split_data:
-        return ba_df, ligand_atlas_binding_df
+        return ba_df
 
     ix = ba_df["Stratification_index"].value_counts()
     low_count_labels = ix[ix<3].index
@@ -383,14 +388,7 @@ def load_binding_affinity_dataframes_jointseqs(config, split_data=True):
     if res_df is not None:
         train_ba_df = pd.concat([train_ba_df, res_df])
 
-    if ligand_atlas_binding_df is not None:
-        # Filter to remove samples from training set
-        dhlap_samples = set(tuple(x) for x in train_ba_df[["Peptide", "HLA"]].values).union(set(tuple(x) for x in val_ba_df[["Peptide", "HLA"]].values))
-        la_samples = set(tuple(x) for x in ligand_atlas_binding_df[["Peptide", "HLA"]].values)
-        ligand_atlas_binding_df = ligand_atlas_binding_df[ligand_atlas_binding_df[["Peptide", "HLA"]].apply(tuple, 1).isin(la_samples.difference(dhlap_samples))]
-    
-    return train_ba_df, val_ba_df, test_ba_df, ligand_atlas_binding_df
-
+    return train_ba_df, val_ba_df, test_ba_df
 class SequencesInteractionDataset(Dataset):
     def __init__(self, df, hla_repr=["Allele Pseudo-sequence"], target_label="Label"):        
         super().__init__()
