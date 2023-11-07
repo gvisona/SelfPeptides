@@ -33,14 +33,14 @@ parameters:
     value: Binding_model_LS_concatLA_alpha
   lr:
     distribution: log_uniform_values 
-    max: 5.0e-4
-    min: 5e-5
+    max: 3.0e-4
+    min: 3e-5
   momentum:
     value: 0.9
   nesterov_momentum:
     value: True
   max_updates:
-    value: 5000
+    value: 10000
   min_frac:
     value: 0.1
   dropout_p:
@@ -91,7 +91,7 @@ parameters:
     values: 
     - 0.05
     - 0.1
+    - 0.15
     - 0.2
-    - 0.3
   wandb_sweep:
     value: True
