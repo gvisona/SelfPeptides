@@ -30,7 +30,7 @@ parameters:
   experiment_group:
     value: DHLAP_binding_affinity_training_LS
   experiment_name:
-    value: Binding_model_LS_lrfind
+    value: Binding_model_LS_lrfind_loss
   lr:
     distribution: log_uniform_values 
     max: 5.0e-3
