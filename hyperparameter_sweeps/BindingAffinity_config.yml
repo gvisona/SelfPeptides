@@ -34,7 +34,7 @@ parameters:
   lr:
     distribution: log_uniform_values 
     max: 5.0e-4
-    min: 5e-5
+    min: 5e-8
   momentum:
     value: 0.9
   nesterov_momentum:
