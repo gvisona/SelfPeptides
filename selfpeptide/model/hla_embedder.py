@@ -11,12 +11,12 @@ class Pretrained_HLA_Embedder(nn.Module):
         self.idx2seq = {i:s for s, i in self.seq2idx.items()}
         self.device = device
         embeddings = np.load(config[prefix+"embeddings_file"])
-        self.pretrained_embeddings = nn.Embedding.from_pretrained(torch.tensor(embeddings, device=self.device))
+        self.pretrained_embeddings = nn.Embedding.from_pretrained(torch.tensor(embeddings))
         self.pretrained_embeddings.to(device)
     
     def forward(self, hla_seqs):
         idxs = [self.seq2idx[s] for s in hla_seqs]
-        idxs_tensor = torch.LongTensor(idxs, device=self.device)
+        idxs_tensor = torch.LongTensor(idxs).to(self.device)
         embs = self.pretrained_embeddings(idxs_tensor)
         return embs
     

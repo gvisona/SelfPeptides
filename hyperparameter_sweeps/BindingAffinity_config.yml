@@ -30,7 +30,7 @@ parameters:
   experiment_group:
     value: DHLAP_binding_affinity_training_LS
   experiment_name:
-    value: BA_model_training_LabelSmoothing
+    value: Binding_model_training_LS
   lr:
     distribution: log_uniform_values 
     max: 5.0e-4
