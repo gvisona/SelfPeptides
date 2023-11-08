@@ -30,7 +30,7 @@ parameters:
   experiment_group:
     value: DHLAP_binding_affinity_training_LS
   experiment_name:
-    value: Binding_model_LS_seeds
+    value: Binding_model_LS_seeds_long
   lr:
     value: 0.0002939271685357633
   momentum:
@@ -38,7 +38,7 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    value: 10000
+    value: 20000
   min_frac:
     value: 0.1
   dropout_p:
