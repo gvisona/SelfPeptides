@@ -12,12 +12,13 @@ import os
 from os.path import exists, join
 from scipy.stats import beta
 from tqdm import tqdm
-from selfpeptide.utils.data_utils import load_immunogenicity_dataframes, BetaDistributionDataset, SequencesInteractionDataset
-from selfpeptide.utils.training_utils import get_class_weights, find_optimal_sf_quantile, CustomKL_Loss
-from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule, eval_regression_metrics, eval_classification_metrics, CustomCMT_AllTriplets_Loss
-from selfpeptide.utils.function_utils import get_alpha, get_beta
+from selfpeptide.utils.data_utils import load_immunogenicity_dataframes_jointseqs, BetaDistributionDataset, SequencesInteractionDataset
+from selfpeptide.utils.training_utils import find_optimal_class_threshold, BetaChernoffDistance
+from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule
+from selfpeptide.utils.training_utils import eval_beta_metrics, eval_regression_metrics, eval_classification_metrics
+from selfpeptide.utils.beta_distr_utils import *
 from selfpeptide.utils.model_utils import load_binding_model, load_sns_model
-from selfpeptide.model.immunogenicity_classifier import JointPeptidesNetwork
+from selfpeptide.model.immunogenicity_classifier import JointPeptidesNetwork_Beta
 
 def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
@@ -57,17 +58,9 @@ def train(config=None, init_wandb=True):
     
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
-    regression_loss = "none"
-    if config["regression_weight"]>0.0:
-        # print("Selecting regression loss")
-        # regression_loss = np.random.choice(["CB_NLL", "L1", "MSE"], p=[0.4, 0.3, 0.3])
-        regression_loss = "MSE"
-    else:
-        print("No regression loss used")
-    config["regression_loss"] = regression_loss
     
     print("Loading immunogenicity data")
-    train_df, val_df, test_df, dhlap_imm_df = load_immunogenicity_dataframes(config)
+    train_df, val_df, test_df, dhlap_imm_df = load_immunogenicity_dataframes_jointseqs(config)
     
     
     with open(join(output_folder, "config.json"), "w") as f:
@@ -75,28 +68,34 @@ def train(config=None, init_wandb=True):
         
     checkpoint_path = os.path.join(output_folder, "checkpoint.pt")
     
-    pos_weight, neg_weight = get_class_weights(train_df, target_label="Target")
+    optimal_mean_class_threshold = find_optimal_class_threshold(train_df, "Distr. Mean", target_metric=config.get("target_class_metric", "MCC"))
+    optimal_mode_class_threshold = find_optimal_class_threshold(train_df, "Distr. Mode", target_metric=config.get("target_class_metric", "MCC"))
+    # target_metric = config.get("target_metric", "AUPRC")
+    wandb.run.summary["mean_class_threshold"] = optimal_mean_class_threshold
+    wandb.run.summary["mode_class_threshold"] = optimal_mode_class_threshold
     
-    wandb.run.summary["pos_weight"] = pos_weight
-    wandb.run.summary["neg_weight"] = neg_weight
-    
-    target_metric = config.get("target_metric", "AUPRC")
-    
-    sf_threshold = find_optimal_sf_quantile(train_df, class_threshold=0.5, target_metric=target_metric)
-    wandb.run.summary["sf_threshold"] = sf_threshold
-    
-    train_dset = BetaDistributionDataset(train_df, hla_repr=config["hla_repr"])
-    val_dset = BetaDistributionDataset(val_df, hla_repr=config["hla_repr"])
-    test_dset = BetaDistributionDataset(test_df, hla_repr=config["hla_repr"])
+    train_dset = BetaDistributionDataset(train_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
+    val_dset = BetaDistributionDataset(val_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
+    test_dset = BetaDistributionDataset(test_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     
     train_loader = DataLoader(train_dset, batch_size=config['batch_size'], drop_last=True, shuffle=True)
     val_loader = DataLoader(val_dset, batch_size=config['batch_size'], drop_last=False, shuffle=False)
     test_loader = DataLoader(test_dset, batch_size=config['batch_size'], drop_last=False)
     
     print("Loading model")
-    model = JointPeptidesNetwork(config, config["binding_model_config"], config["sns_model_config"], 
+    with open(config["binding_model_config"], "r") as f:
+        binding_model_config = json.load(f)
+    if os.path.exists("/home/gvisona/Projects"):
+        for k in binding_model_config.keys():
+            if not isinstance(binding_model_config[k], str):
+                continue
+            if "/home/gvisona/SelfPeptides" in binding_model_config[k]:
+                binding_model_config[k] = binding_model_config[k].replace("/home/gvisona/SelfPeptides", "/home/gvisona/Projects/SelfPeptides")
+            if "/fast/gvisona/SelfPeptides" in binding_model_config[k]:
+                binding_model_config[k] = binding_model_config[k].replace("/fast/gvisona/SelfPeptides", "/home/gvisona/Projects/SelfPeptides")
+    
+    model = JointPeptidesNetwork_Beta(config, binding_model_config, 
                              binding_checkpoint=config["binding_model_checkpoint"], 
-                             sns_checkpoint=config["sns_model_checkpoint"],
                              device=device)
     
     
@@ -117,12 +116,8 @@ def train(config=None, init_wandb=True):
         
     max_iters = config["max_updates"] * config["accumulate_batches"] + 1
     
-    if config["use_class_weights"]:
-        class_weights = [neg_weight, pos_weight]
-    else:
-        class_weights = [1.0, 1.0]
         
-    kl_loss = CustomKL_Loss(config, class_weights=class_weights, device=device)
+    beta_loss = BetaChernoffDistance(config, device=device) 
     
     checkpoints_folder = os.path.join(output_folder, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok=True)
@@ -176,8 +171,7 @@ def train(config=None, init_wandb=True):
     perform_validation = False
     log_results = False     
     
-    optimal_class_threshold = 0.5
-    best_val_metric = 0.0
+    best_val_metric = np.inf
     best_metric_iter = 0
     avg_train_logs = None
     n_iters_per_val_cycle = config["accumulate_batches"] * config["validate_every_n_updates"] 
@@ -200,16 +194,16 @@ def train(config=None, init_wandb=True):
             if n_iter>max_iters:
                 break
             
-            peptides, hla_pseudoseqs = train_batch[:2]
-            imm_alpha, imm_beta, imm_target = train_batch[2:]
+            peptides, hla_pseudoseqs, hla_prots = train_batch[:3]
+            imm_alpha, imm_beta, imm_target = train_batch[3:]
             
             imm_alpha = imm_alpha.float().to(device)
             imm_beta = imm_beta.float().to(device)
             imm_target = imm_target.float().to(device)
             
-            predictions = model(peptides, hla_pseudoseqs)
+            predictions = model(peptides, hla_pseudoseqs, hla_prots)
 
-            loss, train_loss_logs = kl_loss(predictions, imm_alpha, imm_beta, imm_target)
+            loss, train_loss_logs = beta_loss(predictions, imm_alpha, imm_beta)
             train_loss_logs = {"train/"+str(k): v for k, v in train_loss_logs.items()}
                 
             if avg_train_logs is None:
@@ -235,18 +229,18 @@ def train(config=None, init_wandb=True):
                 
                 avg_val_logs = None
                 val_pred_means = []
-                val_pred_vars = []
+                val_pred_precisions = []
                 for ix, val_batch in enumerate(val_loader):
-                    peptides, hla_pseudoseqs = val_batch[:2]
-                    imm_alpha, imm_beta, imm_target = val_batch[2:]
+                    peptides, hla_pseudoseqs, hla_prots = val_batch[:3]
+                    imm_alpha, imm_beta, imm_target = val_batch[3:]
 
                     imm_alpha = imm_alpha.float().to(device)
                     imm_beta = imm_beta.float().to(device)
                     imm_target = imm_target.float().to(device)
                     
-                    predictions = model(peptides, hla_pseudoseqs)
+                    predictions = model(peptides, hla_pseudoseqs, hla_prots)
 
-                    loss, val_loss_logs = kl_loss(predictions, imm_alpha, imm_beta, imm_target)
+                    loss, val_loss_logs = beta_loss(predictions, imm_alpha, imm_beta)
                     val_loss_logs = {"val/"+str(k): v for k, v in val_loss_logs.items()}
                     
                     if avg_val_logs is None:
@@ -256,43 +250,50 @@ def train(config=None, init_wandb=True):
                             avg_val_logs[k] += val_loss_logs[k]
                     
 
-                    pred_means = predictions[:,0]                    
-                    pred_vars = predictions[:,1]
+                    pred_posterior_means = predictions[:,2]                    
+                    pred_precisions = predictions[:,3]
                     
                         
-                    pred_means = pred_means.detach().cpu().tolist()
-                    if not isinstance(pred_means, list):
-                        pred_means = [pred_means]
-                    val_pred_means.extend(pred_means)        
+                    pred_posterior_means = pred_posterior_means.detach().cpu().tolist()
+                    if not isinstance(pred_posterior_means, list):
+                        pred_posterior_means = [pred_posterior_means]
+                    val_pred_means.extend(pred_posterior_means)        
                     
-                    pred_vars = pred_vars.detach().cpu().tolist()
-                    if not isinstance(pred_vars, list):
-                        pred_vars = [pred_vars]
-                    val_pred_vars.extend(pred_vars)        
+                    pred_precisions = pred_precisions.detach().cpu().tolist()
+                    if not isinstance(pred_precisions, list):
+                        pred_precisions = [pred_precisions]
+                    val_pred_precisions.extend(pred_precisions)        
                     
-                val_alphas = get_alpha(val_pred_means, val_pred_vars)
-                val_betas = get_beta(val_pred_means, val_alphas)
+                val_pred_alphas, val_pred_betas, val_pred_vars, val_pred_modes = beta_distr_params_from_mean_precision(val_pred_means, val_pred_precisions)
+
+                class_targets = val_df["Target"].values
+                val_mean_classification_metrics = eval_classification_metrics(class_targets, val_pred_means, 
+                                                        is_logit=False, threshold=optimal_mean_class_threshold)
+                val_mean_classification_metrics = {"val_mean_class/"+k: v for k, v in val_mean_classification_metrics.items()}
                 
-                val_predictions = beta.sf(sf_threshold, val_alphas, val_betas)
-                targets = val_df["Target"].values
+                val_mode_classification_metrics = eval_classification_metrics(class_targets, val_pred_modes, 
+                                                        is_logit=False, threshold=optimal_mode_class_threshold)
+                val_mode_classification_metrics = {"val_mode_class/"+k: v for k, v in val_mode_classification_metrics.items()}
                 
-                val_classification_metrics = eval_classification_metrics(targets, val_predictions, 
-                                                        is_logit=False, threshold=0.5)
-                val_classification_metrics = {"val_class/"+k: v for k, v in val_classification_metrics.items()}
+                regression_mean_targets = val_df["Distr. Mean"].values
+                val_regression_mean_metrics = eval_regression_metrics(regression_mean_targets, val_pred_means)
+                val_regression_mean_metrics = {"val_mean_regr/"+k: v for k, v in val_regression_mean_metrics.items()}
                 
-                fractional_targets = val_df["Distr. Mean"].values
-                target_vars = val_df["Distr. Variance"].values
-                val_regression_metrics = eval_regression_metrics(fractional_targets, val_pred_means, 
-                                                                target_vars=target_vars, pred_vars=val_pred_vars)
+                regression_mode_targets = val_df["Distr. Mode"].values
+                val_regression_mode_metrics = eval_regression_metrics(regression_mode_targets, val_pred_modes)
+                val_regression_mode_metrics = {"val_mode_regr/"+k: v for k, v in val_regression_mode_metrics.items()}
                 
-                val_regression_metrics = {"val_regr/"+k: v for k, v in val_regression_metrics.items()}
+                target_means = val_df["Distr. Mean"].values
+                target_precisions = val_df["Distr. Precision"].values
+                val_beta_metrics = eval_beta_metrics(target_means, target_precisions, val_pred_means, val_pred_precisions)
+                val_beta_metrics = {"val_beta/"+k: v for k, v in val_beta_metrics.items()}
                 
                 for k in avg_val_logs:
                     avg_val_logs[k] /= len(val_loader)
                     
                     
-                epoch_val_metric = val_classification_metrics["val_class/"+target_metric] 
-                if epoch_val_metric>best_val_metric:
+                epoch_val_metric = avg_val_logs["val/loss"] 
+                if epoch_val_metric<best_val_metric:
                     best_val_metric = epoch_val_metric
                     best_metric_iter = n_iter
                     torch.save(model.state_dict(), checkpoint_path)
@@ -316,8 +317,12 @@ def train(config=None, init_wandb=True):
                 
                 logs.update(avg_train_logs)
                 logs.update(avg_val_logs)
-                logs.update(val_regression_metrics)
-                logs.update(val_classification_metrics)
+                # logs.update(val_regression_metrics)
+                logs.update(val_mean_classification_metrics)
+                logs.update(val_mode_classification_metrics)
+                logs.update(val_beta_metrics)
+                logs.update(val_regression_mean_metrics)
+                logs.update(val_regression_mode_metrics)
                 
                 wandb.log(logs)      
                 avg_train_logs = None
@@ -337,127 +342,158 @@ def train(config=None, init_wandb=True):
     
     print("Testing model..")
     test_pred_means = []
-    test_pred_vars = []
+    test_pred_precisions = []
     for ix, test_batch in tqdm(enumerate(test_loader)):
-        peptides, hla_pseudoseqs = test_batch[:2]
-        imm_alpha, imm_beta, imm_target = test_batch[2:]
+        peptides, hla_pseudoseqs, hla_prots = test_batch[:3]
+        imm_alpha, imm_beta, imm_target = test_batch[3:]
 
         imm_alpha = imm_alpha.float().to(device)
         imm_beta = imm_beta.float().to(device)
         imm_target = imm_target.float().to(device)
         
-        predictions = model(peptides, hla_pseudoseqs)
+        predictions = model(peptides, hla_pseudoseqs, hla_prots)
 
-        pred_means = predictions[:,0]              
-        pred_vars = predictions[:,1]
+        pred_posterior_means = predictions[:,2] # Select posterior mean              
+        pred_precisions = predictions[:,3]
         
-        pred_means = pred_means.detach().cpu().tolist()
-        if not isinstance(pred_means, list):
-            pred_means = [pred_means]
-        test_pred_means.extend(pred_means)
-        pred_vars = pred_vars.detach().cpu().tolist()
-        if not isinstance(pred_vars, list):
-            pred_vars = [pred_vars]
-        test_pred_vars.extend(pred_vars)
+        pred_posterior_means = pred_posterior_means.detach().cpu().tolist()
+        if not isinstance(pred_posterior_means, list):
+            pred_posterior_means = [pred_posterior_means]
+        test_pred_means.extend(pred_posterior_means)
+        
+        pred_precisions = pred_precisions.detach().cpu().tolist()
+        if not isinstance(pred_precisions, list):
+            pred_precisions = [pred_precisions]
+        test_pred_precisions.extend(pred_precisions)
         
         
     test_pred_means.extend([np.nan]*(len(test_df)-len(test_pred_means)))
-    test_pred_vars.extend([np.nan]*(len(test_df)-len(test_pred_vars)))
-    
-    test_alphas = get_alpha(test_pred_means, test_pred_vars)
-    test_betas = get_beta(test_pred_means, test_alphas)
-    
-    test_predictions = beta.sf(sf_threshold, test_alphas, test_betas)
-    
-    test_df["Prediction"] = test_predictions
-    test_df["Prediction Beta Mean"] = test_pred_means
-    test_df["Prediction Beta Variance"] = test_pred_vars
-    test_df.to_csv(join(results_folder, f"test_predictions_{run_name}.csv"), index=False)
-
+    test_pred_precisions.extend([np.nan]*(len(test_df)-len(test_pred_precisions)))
     test_df = test_df.dropna()
     
-    targets = test_df["Target"].values
-    fractional_targets = test_df["Distr. Mean"].values
-    target_vars = test_df["Distr. Variance"].values
+    test_pred_alphas, test_pred_betas, test_pred_vars, test_pred_modes = beta_distr_params_from_mean_precision(test_pred_means, test_pred_precisions)
+
+    test_df["Prediction Distr. Mean"] = test_pred_means
+    test_df["Prediction Distr. Precision"] = test_pred_precisions
     
-    test_metrics = eval_classification_metrics(targets, test_predictions, 
-                                            is_logit=False, 
-                                            threshold=optimal_class_threshold)
-    test_metrics["class_threshold"] = optimal_class_threshold
-    test_metrics = {"test_IEDB_class/"+k: v for k, v in test_metrics.items()}
+    test_df.to_csv(join(results_folder, f"test_predictions_{run_name}.csv"), index=False)
+
+    class_targets = test_df["Target"].values
+    test_mean_classification_metrics = eval_classification_metrics(class_targets, test_pred_means, 
+                                            is_logit=False, threshold=optimal_mean_class_threshold)
+    test_mean_classification_metrics = {"test_IEDB_mean_class/"+k: v for k, v in test_mean_classification_metrics.items()}
     
-    test_regression_metrics = eval_regression_metrics(fractional_targets, test_pred_means, 
-                                                        target_vars=target_vars, pred_vars=test_pred_vars)
+    test_mode_classification_metrics = eval_classification_metrics(class_targets, test_pred_modes, 
+                                            is_logit=False, threshold=optimal_mode_class_threshold)
+    test_mode_classification_metrics = {"test_IEDB_mode_class/"+k: v for k, v in test_mode_classification_metrics.items()}
     
-    test_regression_metrics = {"test_IEDB_regr/"+k: v for k, v in test_regression_metrics.items()}
+    regression_mean_targets = test_df["Distr. Mean"].values
+    test_regression_mean_metrics = eval_regression_metrics(regression_mean_targets, test_pred_means)
+    test_regression_mean_metrics = {"test_IEDB_mean_regr/"+k: v for k, v in test_regression_mean_metrics.items()}
     
+    regression_mode_targets = test_df["Distr. Mode"].values
+    test_regression_mode_metrics = eval_regression_metrics(regression_mode_targets, test_pred_modes)
+    test_regression_mode_metrics = {"test_IEDB_mode_regr/"+k: v for k, v in test_regression_mode_metrics.items()}
     
-    for k, v in test_metrics.items():
+    target_means = test_df["Distr. Mean"].values
+    target_precisions = test_df["Distr. Precision"].values
+    test_beta_metrics = eval_beta_metrics(target_means, target_precisions, test_pred_means, test_pred_precisions)
+    test_beta_metrics = {"test_IEDB_beta/"+k: v for k, v in test_beta_metrics.items()}
+                
+    
+    for k, v in test_mean_classification_metrics.items():
+        wandb.run.summary[k] = v
+    for k, v in test_mode_classification_metrics.items():
+        wandb.run.summary[k] = v
+    for k, v in test_regression_mean_metrics.items():
+        wandb.run.summary[k] = v
+    for k, v in test_regression_mode_metrics.items():
         wandb.run.summary[k] = v
     
-    for k, v in test_regression_metrics.items():
-        wandb.run.summary[k] = v
+    predicted_mean_classes = (test_df["Prediction Distr. Mean"]>optimal_mean_class_threshold).astype(int).values
+    wandb.log({"test_mean_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=class_targets, preds=predicted_mean_classes,
+                        class_names=["IEDB Mean Negative", "IEDB Mean Positive"])})
     
-    predicted_classes = (test_df["Prediction"]>optimal_class_threshold).astype(int).values
-    wandb.log({"test_conf_mat" : wandb.plot.confusion_matrix(probs=None,
-                        y_true=targets, preds=predicted_classes,
-                        class_names=["Negative", "Positive"])})
+    predicted_mode_classes = (test_pred_modes>optimal_mode_class_threshold).astype(int)
+    wandb.log({"test_mode_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=class_targets, preds=predicted_mode_classes,
+                        class_names=["IEDB Mode Negative", "IEDB Mode Positive"])})
     
-    
-    with open(join(results_folder, f"test_metrics_{run_name}.json"), "w") as f:
-        json.dump(test_metrics, f)
+    # with open(join(results_folder, f"test_metrics_{run_name}.json"), "w") as f:
+    #     json.dump(test_metrics, f)
                     
         
         
         
-    dhlap_dset = SequencesInteractionDataset(dhlap_imm_df, hla_repr=config["hla_repr"])
+    dhlap_dset = SequencesInteractionDataset(dhlap_imm_df, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     dhlap_loader = DataLoader(dhlap_dset, batch_size=config['batch_size'])
     
     test_pred_means = []
-    test_pred_vars = []
+    test_pred_precisions = []
     for ix, test_batch in tqdm(enumerate(dhlap_loader)):        
-        peptides, hla_pseudoseqs = test_batch[:2]
-        predictions = model(peptides, hla_pseudoseqs)
+        peptides, hla_pseudoseqs, hla_prots = test_batch[:3]
+        predictions = model(peptides, hla_pseudoseqs, hla_prots)
         
-        pred_means = predictions[:,0]
-        pred_vars = predictions[:,1]
+        pred_posterior_means = predictions[:,2]
+        pred_precisions = predictions[:,3]
         
-        test_pred_means.extend(pred_means.detach().cpu().tolist())
-        test_pred_vars.extend(pred_vars.detach().cpu().tolist())
+        pred_posterior_means = pred_posterior_means.detach().cpu().tolist()
+        if not isinstance(pred_posterior_means, list):
+            pred_posterior_means = [pred_posterior_means]
+        test_pred_means.extend(pred_posterior_means)
         
+        pred_precisions = pred_precisions.detach().cpu().tolist()
+        if not isinstance(pred_precisions, list):
+            pred_precisions = [pred_precisions]
+        test_pred_precisions.extend(pred_precisions)
         
-    test_pred_means.extend([np.nan]*(len(dhlap_imm_df)-len(test_pred_means)))
-    test_pred_vars.extend([np.nan]*(len(dhlap_imm_df)-len(test_pred_vars)))
 
-    test_alphas = get_alpha(test_pred_means, test_pred_vars)
-    test_betas = get_beta(test_pred_means, test_alphas)
+    test_pred_means.extend([np.nan]*(len(dhlap_imm_df)-len(test_pred_means)))
+    test_pred_precisions.extend([np.nan]*(len(dhlap_imm_df)-len(test_pred_precisions)))
     
-    test_predictions = beta.sf(sf_threshold, test_alphas, test_betas)
+    test_pred_alphas, test_pred_betas, test_pred_vars, test_pred_modes = beta_distr_params_from_mean_precision(test_pred_means, test_pred_precisions)
     
-    dhlap_imm_df["Prediction"] = test_predictions
-    dhlap_imm_df["Prediction Beta Mean"] = test_pred_means
-    dhlap_imm_df["Prediction Beta Variance"] = test_pred_vars
+    dhlap_imm_df["Prediction Distr. Mean"] = test_pred_means
+    dhlap_imm_df["Prediction Distr. Precision"] = test_pred_precisions
+    
+    
+    predicted_mean_classes = (dhlap_imm_df["Prediction Distr. Mean"]>optimal_mean_class_threshold).astype(int).values
+    predicted_mode_classes = (test_pred_modes>optimal_mode_class_threshold).astype(int)
+
+    dhlap_imm_df["Predicted Class (Mean)"] = predicted_mean_classes
+    dhlap_imm_df["Predicted Class (Mode)"] = predicted_mode_classes
+
     dhlap_imm_df.to_csv(join(results_folder, f"dhlap_test_predictions_{run_name}.csv"), index=False)
 
-    targets = dhlap_imm_df["Label"].values
+    class_targets = dhlap_imm_df["Label"].values
     
-    test_metrics = eval_classification_metrics(targets, test_predictions, 
-                                            is_logit=False, 
-                                            threshold=optimal_class_threshold)
-    test_metrics["class_threshold"] = optimal_class_threshold
+    test_mean_classification_metrics = eval_classification_metrics(class_targets, test_pred_means, 
+                                            is_logit=False, threshold=optimal_mean_class_threshold)
+    test_mean_classification_metrics = {"test_DHLAP_mean_class/"+k: v for k, v in test_mean_classification_metrics.items()}
     
-    test_metrics = {"test_DHLAP_class/"+k: v for k, v in test_metrics.items()}
+    test_mode_classification_metrics = eval_classification_metrics(class_targets, test_pred_modes, 
+                                            is_logit=False, threshold=optimal_mode_class_threshold)
+    test_mode_classification_metrics = {"test_DHLAP_mode_class/"+k: v for k, v in test_mode_classification_metrics.items()}
     
-    for k, v in test_metrics.items():
+
+    for k, v in test_mean_classification_metrics.items():
         wandb.run.summary[k] = v
-        
-    predicted_classes = (dhlap_imm_df["Prediction"]>optimal_class_threshold).astype(int).values
-    wandb.log({"test_DHLAP_conf_mat" : wandb.plot.confusion_matrix(probs=None,
-                        y_true=targets, preds=predicted_classes,
-                        class_names=["DHLAP_Negative", "DHLAP_Positive"])})
+    for k, v in test_mode_classification_metrics.items():
+        wandb.run.summary[k] = v
+
     
-    with open(join(results_folder, f"test_metrics_dhlap_{run_name}.json"), "w") as f:
-        json.dump(test_metrics, f)
+    wandb.log({"test_DHLAP_mean_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=class_targets, preds=predicted_mean_classes,
+                        class_names=["DHLAP Mean Negative", "DHLAP Mean Positive"])})
+    
+    wandb.log({"test_DHLAP_mode_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                    y_true=class_targets, preds=predicted_mode_classes,
+                    class_names=["DHLAP Mode Negative", "DHLAP Mode Positive"])})
+
+    
+    # with open(join(results_folder, f"test_metrics_dhlap_{run_name}.json"), "w") as f:
+    #     json.dump(test_metrics, f)
         
     print("Training complete!")
     
@@ -471,59 +507,40 @@ if __name__=="__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run_number", type=int)
     parser.add_argument("--experiment_name", type=str, default="devel")
-    parser.add_argument("--experiment_group", type=str, default="Beta_regs_fullmodel")
+    parser.add_argument("--experiment_group", type=str, default="Beta_regs_js")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     parser.add_argument("--init_checkpoint", default=None)
     parser.add_argument("--force_restart", action=argparse.BooleanOptionalAction, default=True)
     
-    
-    parser.add_argument("--mean_threshold", type=float, default=0.15)
     parser.add_argument("--min_subjects_tested", type=int, default=1)
     parser.add_argument("--hla_filter", default=None)
     
-    parser.add_argument("--beta_prior", type=str, default="uniform") 
     parser.add_argument("--immunogenicity_df", type=str, 
-                        default="/home/gvisona/Projects/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_Beta_noPrior.csv")
+                        default="/home/gvisona/Projects/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv")
     parser.add_argument("--dhlap_df", type=str, 
                         default="/home/gvisona/Projects/SelfPeptides/processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv")    
-    parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/data/NetMHCpan_pseudoseq/MHC_pseudo.dat")
+    parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv")
+    parser.add_argument("--hla_prot_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv")
     
-    parser.add_argument("--binding_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/binding_model/config.json")
-    parser.add_argument("--binding_model_checkpoint", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/binding_model/checkpoints/001_checkpoint.pt")
-    parser.add_argument("--sns_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/sns_model/config.json")
-    parser.add_argument("--sns_model_checkpoint", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt")
-    
+    parser.add_argument("--binding_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/BindingModels/solar-sweep-1/config.json")
+    parser.add_argument("--binding_model_checkpoint", type=str, 
+                        default="/home/gvisona/Projects/SelfPeptides/trained_models/BindingModels/solar-sweep-1/checkpoints/001_checkpoint.pt")
+
      
-    parser.add_argument("--PMA_ln", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--PMA_num_heads", type=int, default=2)
     parser.add_argument("--dropout_p", type=float, default=0.15)
-    parser.add_argument("--embedding_dim", type=int, default=512)
-    parser.add_argument("--n_attention_layers", type=int, default=1)
-    parser.add_argument("--num_heads", type=int, default=2)
-    parser.add_argument("--mlp_input_dim", type=int, default=2560)
-    parser.add_argument("--mlp_hidden_dim", type=int, default=128)
-    parser.add_argument("--mlp_num_layers", type=int, default=1)
-    parser.add_argument("--transf_hidden_dim", type=int, default=32)
-    parser.add_argument("--output_dim", type=int, default=8)
-    parser.add_argument("--beta_regr_hidden_dim", type=int, default=64)
-    
-    parser.add_argument("--peptide_emb_pooling", type=str, default="PMA")
-    parser.add_argument("--peptide_embedding_model", type=str, default="AATransformerEncoder")
-    parser.add_argument("--hla_repr", type=str, default="Allele Pseudo-sequence")
-    parser.add_argument("--hla_embedding_model", type=str, default="shared")
-    parser.add_argument("--hla_emb_pooling", default=None)
-    parser.add_argument("--pretrained_aa_embeddings", type=str,
-                        default="/home/gvisona/Projects/SelfPeptides/processed_data/aa_embeddings/normalized_learned_BA_AA_embeddings.npy")
-    
+    # parser.add_argument("--embedding_dim", type=int, default=512)
+    parser.add_argument("--mlp_input_dim", type=int, default=1025)
+    parser.add_argument("--mlp_hidden_dim", type=int, default=2048)
+    parser.add_argument("--mlp_num_layers", type=int, default=2)
+    parser.add_argument("--output_dim", type=int, default=2)
+
 
     
-    
-    parser.add_argument("--use_class_weights", action=argparse.BooleanOptionalAction, default=False)
-    
-    parser.add_argument("--regression_weight", type=float, default=1.0)
-    parser.add_argument("--kl_weight", type=float, default=1.0)
-    parser.add_argument("--kl_loss_type", type=str, default="forward")
-    parser.add_argument("--target_metric", type=str, default="F1")
+    # ]
+    # parser.add_argument("--regression_weight", type=float, default=1.0)
+    # parser.add_argument("--kl_weight", type=float, default=1.0)
+    # parser.add_argument("--kl_loss_type", type=str, default="forward")
+    # parser.add_argument("--target_metric", type=str, default="F1")
     
     parser.add_argument("--max_updates", type=int, default=5)
     parser.add_argument("--patience", type=int, default=1000)

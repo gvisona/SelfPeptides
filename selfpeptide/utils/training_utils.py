@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.metrics import matthews_corrcoef, balanced_accuracy_score, precision_score, recall_score, f1_score
 from sklearn.metrics import roc_auc_score, average_precision_score
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics import r2_score, median_absolute_error, mean_absolute_error
 import math
 from itertools import islice, zip_longest
 import os
@@ -10,7 +11,8 @@ from os.path import exists, join
 import torch
 import torch.nn as nn
 from scipy.stats import beta
-from selfpeptide.utils.function_utils import get_alpha, get_beta, beta_distr_mean
+from selfpeptide.utils.beta_distr_utils import *
+from scipy.stats import wasserstein_distance
 
 def sigmoid(x):
     return 1/(1 + np.exp(-x))
@@ -103,21 +105,54 @@ def eval_classification_metrics(targets, predictions, is_logit=False, threshold=
     
     return metrics
 
-def eval_regression_metrics(fractional_targets, predictions, target_vars=None, pred_vars=None):
+
+def eval_regression_metrics(targets, predictions):
+    if isinstance(targets, list):
+        targets = np.array(targets)
+    if isinstance(predictions, list):
+        predictions = np.array(predictions)
     metrics = {}
-    metrics["BetaMean-R"] = np.corrcoef(predictions, fractional_targets)[0,1]
-    metrics["BetaMean-RMSE"] = np.sqrt(np.mean(np.square(predictions - fractional_targets)))
-    
-    if target_vars is not None and pred_vars is not None:
-        pred_alphas = get_alpha(predictions, pred_vars)
-        pred_betas = get_beta(predictions, pred_alphas)
-        target_alphas = get_alpha(fractional_targets, target_vars)
-        target_betas = get_beta(fractional_targets, target_alphas)
-        
-        kl = torch.mean(beta_kl_divergence(pred_alphas, pred_betas, target_alphas, target_betas)).item()
-        metrics["BetaKL"] = kl
+    metrics["PearsonR"] = np.corrcoef(targets, predictions)[0,1]
+    metrics["R^2"] = r2_score(targets, predictions)
+    metrics["RMSE"] = np.sqrt(np.mean(np.square(predictions - targets)))
+    metrics["MAE"] = mean_absolute_error(targets, predictions)
+    metrics["MdAE"] = median_absolute_error(targets, predictions)
 
     return metrics
+
+def eval_beta_metrics(target_means, target_precisions, pred_means, pred_precisions, n_samples=1000):
+    if isinstance(target_means, list):
+        target_means = np.array(target_means)
+    if isinstance(target_precisions, list):
+        target_precisions = np.array(target_precisions)
+    if isinstance(pred_means, list):
+        pred_means = np.array(pred_means)
+    if isinstance(pred_precisions, list):
+        pred_precisions = np.array(pred_precisions)
+    target_alphas, target_betas, target_vars, target_modes = beta_distr_params_from_mean_precision(target_means, target_precisions)
+    pred_alphas, pred_betas, pred_vars, pred_modes = beta_distr_params_from_mean_precision(pred_means, pred_precisions)
+    
+    pred_samples = []
+    for s in range(n_samples):
+        pred_samples.append(np.random.beta(pred_alphas, pred_betas))
+    pred_samples = np.vstack(pred_samples)
+    
+    target_samples = []
+    for s in range(n_samples):
+        target_samples.append(np.random.beta(target_alphas, target_betas))
+    target_samples = np.vstack(target_samples)
+    
+    metrics = {}
+    metrics["Forward_KL"] = torch.mean(beta_kl_divergence(target_alphas, target_betas, pred_alphas, pred_betas)).item()
+    metrics["Reverse_KL"] = torch.mean(beta_kl_divergence(pred_alphas, pred_betas, target_alphas, target_betas)).item()
+    metrics["Bhattacharyya_Distance"] = torch.mean(beta_chernoff_distance(pred_alphas, pred_betas, target_alphas, target_betas, lbd=0.5)).item()
+    
+    metrics["WeightedMRS"] = np.mean(np.square(target_means - pred_means)/pred_vars)
+    
+    wds = [wasserstein_distance(pred_samples[:,i], target_samples[:,i]) for i in range(pred_samples.shape[-1])]
+    metrics["WassersteinDistance"] = np.mean(wds)
+    return metrics
+
 
 
 def cosine_similarity_all_pairs(a, b, eps=1e-8):
@@ -326,31 +361,17 @@ def find_optimal_sf_quantile_qualitative(df, priors, class_threshold=0.5, target
             best_threshold = q_threshold
     return best_threshold
 
+def find_optimal_class_threshold(df, predictor_col="Distr. Mode", target_metric="F1"):
+    best_metric = 0
+    best_threshold = 0.0
+    for class_threshold in np.linspace(0.01, 0.51, 51):
+        metrics = eval_classification_metrics(df["Target"], df[predictor_col], is_logit=False, threshold=class_threshold)
+        if metrics[target_metric]>best_metric:
+            best_metric = metrics[target_metric]
+            best_threshold = class_threshold
+    return best_threshold
 
 
-def beta_kl_divergence(alpha1, beta1, alpha2, beta2):
-    if isinstance(alpha1, (list, np.ndarray)):
-        alpha1 = torch.tensor(alpha1)
-    if isinstance(beta1, (list, np.ndarray)):
-        beta1 = torch.tensor(beta1)
-    if isinstance(alpha2, (list, np.ndarray)):
-        alpha2 = torch.tensor(alpha2)
-    if isinstance(beta2, (list, np.ndarray)):
-        beta2 = torch.tensor(beta2)
-    
-    
-    assert (alpha1<0).sum()==0, "Invalid alpha1"
-    assert (beta1<0).sum()==0, "Invalid beta1"
-    assert (alpha2<0).sum()==0, "Invalid alpha2"
-    assert (beta2<0).sum()==0, "Invalid beta2"
-    
-    kl_div = (torch.lgamma(alpha1+beta1) - torch.lgamma(alpha2+beta2)
-              - (torch.lgamma(alpha1) + torch.lgamma(beta1))
-              + (torch.lgamma(alpha2) + torch.lgamma(beta2))
-              + (alpha1 - alpha2) * (torch.digamma(alpha1) - torch.digamma(alpha1+beta1))
-              + (beta1 - beta2) * (torch.digamma(beta1) - torch.digamma(alpha1+beta1))
-             )
-    return kl_div
 
 
 class CustomKL_Loss(nn.Module):
@@ -408,4 +429,33 @@ class CustomKL_Loss(nn.Module):
             
         logs["loss"] =  loss.item()
                
+        return loss, logs
+    
+    
+    
+class BetaChernoffDistance(nn.Module):
+    def __init__(self, config={}, device="cpu"):
+        super().__init__()
+        self.device = device
+        self.lbd = config.get("chernoff_lambda", 0.5)
+        self.loss_weights = config.get("loss_weights", "uniform")
+        
+        assert self.lbd>0 and self.lbd<1, "Select a valid lambda parameter"
+
+    def forward(self, predictions, target_alphas, target_betas):
+        logs = {}
+        means = predictions[:,1]
+        precisions = predictions[:, 3]
+        
+        alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
+        
+        loss = beta_chernoff_distance(target_alphas, target_betas, alphas, betas, lbd=self.lbd)
+        
+        if self.loss_weights == "uniform":
+            weight = torch.ones_like(loss).to(self.device)
+        
+        logs["unweighted_loss"] =  torch.mean(loss).item()
+        loss = torch.mean(loss * weight)
+ 
+        logs["loss"] =  loss.item()
         return loss, logs

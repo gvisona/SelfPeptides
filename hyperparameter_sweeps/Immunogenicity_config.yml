@@ -1,7 +1,7 @@
-method: bayes
+method: random
 metric:
-  goal: maximize
-  name: val_class/MCC
+  goal: minimize
+  name: val/loss
 parameters:
   accumulate_batches:
     values: 
@@ -13,13 +13,17 @@ parameters:
   cool_down:
     value: 0.8
   experiment_group:
-    value: IEDB_BetaRegression_JointNetwork
+    value: IEDB_BetaRegression_Regr
   experiment_name:
-    value: Beta_JointPeptides_MCC
+    value: test_Beta_ProtSeqs_Regr
   immunogenicity_df:
-    value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_Beta_noPrior.csv
+    value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_beta_summed.csv
   dhlap_df:
     value: /home/gvisona/Immunology/processed_data/DHLAP_immunogenicity_data.csv
+  pseudo_seq_file:
+    value: /home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv
+  hla_prot_seq_file:
+    value: /home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv
   lr:
     distribution: log_uniform_values
     min: 1e-8
@@ -29,13 +33,11 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    value: 10000
+    value: 10
   min_frac:
     value: 0.1
   project_folder:
     value: /fast/gvisona/Immunology
-  pseudo_seq_file:
-    value: /home/gvisona/Immunology/data/NetMHCpan_pseudoseq/MHC_pseudo.dat
   ramp_up:
     value: 0.1
   seed:
@@ -52,22 +54,12 @@ parameters:
     value: True
   patience:
     value: 200
-  PMA_ln:
-    value: True
-  PMA_num_heads:
-    value: 4
   dropout_p:
     value: 0.05
   embedding_dim:
     value: 512
-  n_attention_layers:
-    value: 2
-  transf_hidden_dim:
-    value: 512
-  num_heads:
-    value: 4
   mlp_input_dim:
-    value: 2560
+    value: 1025
   mlp_hidden_dim:
     value: 2048
   mlp_num_layers:
@@ -76,53 +68,14 @@ parameters:
     - 3
     - 4
   output_dim: 
-    values: 
-    - 4
-    - 8
-    - 32
-  beta_regr_hidden_dim:
-    values: 
-    - 16
-    - 64
-    - 256
-  hla_repr:
-    value: "Allele Pseudo-sequence"
-  beta_prior:
-    values:
-    - "strong_priors_lowest_var_strong_negatives"
-    - "strong_priors_lowest_var"
-    - "full_random_search_mapping"
+    value: 2
   min_subjects_tested:
     value: 1
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
-  target_metric:
-    value: MCC
-  use_class_weights:
-    values:
-    - False
-    - True
-  kl_weight:
-    value: 1.0
-  regression_weight:
-    values: 
-    - 1.0
-    - 5.0
-    - 10.0
-  kl_loss_type:
-    values:
-    - "forward"
-    - "backward"
-    - "both"
-  mean_threshold:
-    value: "none"
   binding_model_config:
-    value: "/home/gvisona/SelfPeptides/trained_models/binding_model/config.json"
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/solar-sweep-1/config.json"
   binding_model_checkpoint:
-    value: "/home/gvisona/SelfPeptides/trained_models/binding_model/checkpoints/001_checkpoint.pt"
-  sns_model_config:
-    value: "/home/gvisona/SelfPeptides/trained_models/sns_model/config.json"
-  sns_model_checkpoint:
-    value: "/home/gvisona/SelfPeptides/trained_models/sns_model/checkpoints/001_checkpoint.pt"
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/solar-sweep-1/checkpoints/001_checkpoint.pt"
   wandb_sweep:
     value: True
