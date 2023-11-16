@@ -438,13 +438,17 @@ class BetaChernoffDistance(nn.Module):
         super().__init__()
         self.device = device
         self.lbd = config.get("chernoff_lambda", 0.5)
+        self.use_posterior = config.get("use_posterior_mean", False)
         self.loss_weights = config.get("loss_weights", "uniform")
         
         assert self.lbd>0 and self.lbd<1, "Select a valid lambda parameter"
 
     def forward(self, predictions, target_alphas, target_betas):
         logs = {}
-        means = predictions[:,1]
+        if self.use_posterior:
+            means = predictions[:,2]
+        else:
+            means = predictions[:,1]
         precisions = predictions[:, 3]
         
         alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)

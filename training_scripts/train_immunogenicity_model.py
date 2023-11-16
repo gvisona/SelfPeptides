@@ -566,7 +566,7 @@ if __name__=="__main__":
     parser.add_argument("--ramp_up", type=float, default=0.1)
     parser.add_argument("--cool_down", type=float, default=0.8)
 
-
+    parser.add_argument("--use_posterior_mean", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--wandb_sweep", action=argparse.BooleanOptionalAction)
     
     args = parser.parse_args()

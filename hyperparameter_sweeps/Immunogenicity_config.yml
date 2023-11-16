@@ -4,10 +4,7 @@ metric:
   name: val/loss
 parameters:
   accumulate_batches:
-    values: 
-    - 1
-    - 8
-    - 64
+    value: 8
   batch_size:
     value: 16
   cool_down:
@@ -15,7 +12,7 @@ parameters:
   experiment_group:
     value: IEDB_BetaRegression_Regr
   experiment_name:
-    value: Beta_ProtSeqs_Regr
+    value: Beta_ProtSeqs_Regr_post
   immunogenicity_df:
     value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv
   dhlap_df:
@@ -33,7 +30,7 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    value: 10000
+    value: 20000
   min_frac:
     value: 0.1
   project_folder:
@@ -79,3 +76,7 @@ parameters:
     value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/solar-sweep-1/checkpoints/001_checkpoint.pt"
   wandb_sweep:
     value: True
+  use_posterior_mean:
+    values:
+    - True
+    - False
