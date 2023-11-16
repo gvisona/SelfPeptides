@@ -17,9 +17,9 @@ parameters:
   experiment_name:
     value: test_Beta_ProtSeqs_Regr
   immunogenicity_df:
-    value: /home/gvisona/Immunology/processed_data/IEDB/Processed_TCell_IEDB_beta_summed.csv
+    value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv
   dhlap_df:
-    value: /home/gvisona/Immunology/processed_data/DHLAP_immunogenicity_data.csv
+    value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv
   pseudo_seq_file:
     value: /home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv
   hla_prot_seq_file:
