@@ -27,7 +27,7 @@ if __name__=="__main__":
     else:
         project_folder = "/home/gvisona/SelfPeptides"
     
-    with open(os.path.join(project_folder, "hyperparameter_sweeps", "Immunogenicity_class_wPseudolabels_config_init.yml"), "r") as f:
+    with open(os.path.join(project_folder, "hyperparameter_sweeps", "Immunogenicity_config.yml"), "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
     config = {
         "seed": args.seed,
