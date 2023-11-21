@@ -1,4 +1,4 @@
-executable = job_sweep.sh
+executable = job_binding_sweep.sh
 arguments = $(Process)
 error = joblogs/$(Process).err.txt
 output = joblogs/$(Process).out.txt

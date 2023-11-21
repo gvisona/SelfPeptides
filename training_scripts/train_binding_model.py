@@ -385,6 +385,8 @@ if __name__=="__main__":
     parser.add_argument("--output_dim", type=int, default=1)
 
     parser.add_argument("--mlp_hidden_dim", type=int, default=128)
+    parser.add_argument("--mlp_input_dim", type=int, default=512)
+    parser.add_argument("--joint_embedder_hidden_dim", type=int, default=2048)
     parser.add_argument("--mlp_num_layers", type=int, default=1)
     
     

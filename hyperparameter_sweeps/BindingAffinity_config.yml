@@ -28,11 +28,13 @@ parameters:
   cool_down:
     value: 0.8
   experiment_group:
-    value: DHLAP_binding_affinity_training_LS
+    value: DHLAP_binding_affinity_training_LS_joint
   experiment_name:
-    value: Binding_model_LS_seeds_long
+    value: Binding_model_LS_joint
   lr:
-    value: 0.0002939271685357633
+    distribution: log_uniform_values
+    min: 5e-7
+    max: 1e-3
   momentum:
     value: 0.9
   nesterov_momentum:
@@ -43,14 +45,18 @@ parameters:
     value: 0.1
   dropout_p:
     value: 0.05
+  mlp_input_dim:
+    value: 512
   mlp_num_layers:
     value: 2
   mlp_hidden_dim:
     value: 2048
   output_dim:
     value: 1
-  postprocessing_hidden_dim:
-    value: 32
+  joint_embedder_hidden_dim:
+    values: 
+    - 1024
+    - 2048
   project_folder:
     value: /fast/gvisona/SelfPeptides
   pseudo_seq_file:
@@ -86,6 +92,9 @@ parameters:
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
   ls_alpha:
-    value: 0.05
+    values: 
+    - 0.05
+    - 0.1
+    - 0.2
   wandb_sweep:
     value: True
