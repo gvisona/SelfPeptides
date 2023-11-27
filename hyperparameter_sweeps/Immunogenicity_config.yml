@@ -12,7 +12,7 @@ parameters:
   experiment_group:
     value: IEDB_BetaRegression_Regr
   experiment_name:
-    value: Beta_ProtSeqs_Regr_extralong
+    value: test_Beta_ProtSeqs_Regr_DIR
   immunogenicity_df:
     value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv
   dhlap_df:
@@ -34,7 +34,7 @@ parameters:
   min_frac:
     value: 0.1
   project_folder:
-    value: /fast/gvisona/Immunology
+    value: /fast/gvisona/SelfPeptides
   ramp_up:
     value: 0.1
   seed:
@@ -61,19 +61,51 @@ parameters:
     value: 2048
   mlp_num_layers:
     value: 4
-  output_dim: 
-    value: 2
+  mlp_output_dim: 
+    value: 512
+  imm_regression_hidden_dim:
+    value: 2048
   min_subjects_tested:
     value: 1
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
   binding_model_config:
-    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/solar-sweep-1/config.json"
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-1/config.json"
   binding_model_checkpoint:
-    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/solar-sweep-1/checkpoints/001_checkpoint.pt"
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-1/checkpoints/001_checkpoint.pt"
   wandb_sweep:
     value: True
   use_posterior_mean:
     values:
     - True
     - False
+  IR_n_bins:
+   value: 50
+  LDS_kernel:
+    value: "gaussian"
+  LDS_ks:
+    value: 11
+  LDS_sigma:
+    value: 1.5
+  loss_weights:
+    value: "LDS_weights"
+  use_FDS:
+    value: True
+  fds_start_bin:
+    value: 0
+  fds_kernel:
+    value: "gaussian"
+  fds_ks:
+    values:
+    - 11
+    - 15
+    - 7
+    - 21
+  fds_sigma:
+    values:
+    - 2.0
+    - 4.0
+  fds_momentum:
+    value: 0.9
+  
+  

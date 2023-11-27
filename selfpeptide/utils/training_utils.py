@@ -10,9 +10,47 @@ import os
 from os.path import exists, join
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from scipy.stats import beta
 from selfpeptide.utils.beta_distr_utils import *
 from scipy.stats import wasserstein_distance
+from scipy.ndimage import gaussian_filter1d, convolve1d
+from collections import Counter
+from scipy.signal.windows import triang
+import logging
+
+
+def get_lds_kernel_window(kernel, ks, sigma=0.0):
+    assert kernel in ['gaussian', 'triang', 'laplace']
+    half_ks = (ks - 1) // 2
+    if kernel == 'gaussian':
+        base_kernel = [0.] * half_ks + [1.] + [0.] * half_ks
+        kernel_window = gaussian_filter1d(base_kernel, sigma=sigma) / max(gaussian_filter1d(base_kernel, sigma=sigma))
+    elif kernel == 'triang':
+        kernel_window = triang(ks)
+    else:
+        laplace = lambda x: np.exp(-abs(x) / sigma) / (2. * sigma)
+        kernel_window = list(map(laplace, np.arange(-half_ks, half_ks + 1))) / max(map(laplace, np.arange(-half_ks, half_ks + 1)))
+
+    return kernel_window
+
+
+def get_LDS_loss_weights(target_labels, n_bins, kernel, ks, sigma):
+    bins = np.linspace(0, 1.0, n_bins+1)
+    bin_index_per_label = np.digitize(target_labels, bins)
+    bin_index_per_label -= 1
+    num_samples_per_bin = dict(Counter(bin_index_per_label))
+    emp_label_dist = np.array([num_samples_per_bin.get(i, 0) for i in range(n_bins)])
+    
+    lds_kernel_window = get_lds_kernel_window(kernel=kernel, ks=ks, sigma=sigma)
+    eff_label_dist = convolve1d(np.array(emp_label_dist), weights=lds_kernel_window, mode='constant')
+    weight_per_bin = np.array([np.float32(1 / x) for x in eff_label_dist])
+    weight_per_bin = weight_per_bin/np.sum(weight_per_bin)
+    return bins, weight_per_bin, emp_label_dist, eff_label_dist
+
+
+
+
 
 def sigmoid(x):
     return 1/(1 + np.exp(-x))
@@ -434,13 +472,24 @@ class CustomKL_Loss(nn.Module):
     
     
 class BetaChernoffDistance(nn.Module):
-    def __init__(self, config={}, device="cpu"):
+    def __init__(self, config={}, device="cpu", **kwargs):
         super().__init__()
         self.device = device
         self.lbd = config.get("chernoff_lambda", 0.5)
         self.use_posterior = config.get("use_posterior_mean", False)
         self.loss_weights = config.get("loss_weights", "uniform")
         
+        if "bins" in kwargs:
+            if not torch.is_tensor(kwargs["bins"]):
+                self.bins = torch.tensor(kwargs["bins"]).to(device)
+            else:
+                self.bins = (kwargs["bins"]).to(device)
+                
+            if not torch.is_tensor(kwargs["bin_weights"]):
+                self.bin_weights = torch.tensor(kwargs["bin_weights"]).to(device)
+            else:
+                self.bin_weights = (kwargs["bin_weights"]).to(device)
+                
         assert self.lbd>0 and self.lbd<1, "Select a valid lambda parameter"
 
     def forward(self, predictions, target_alphas, target_betas):
@@ -452,14 +501,37 @@ class BetaChernoffDistance(nn.Module):
         precisions = predictions[:, 3]
         
         alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
+        target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)
         
         loss = beta_chernoff_distance(target_alphas, target_betas, alphas, betas, lbd=self.lbd)
         
         if self.loss_weights == "uniform":
-            weight = torch.ones_like(loss).to(self.device)
-        
+            weights = torch.ones_like(loss).to(self.device)
+        elif self.loss_weights == "LDS_weights":
+            idxs = torch.bucketize(target_means, self.bins, right=True) - 1
+            weights = torch.take(self.bin_weights, idxs)
+            
         logs["unweighted_loss"] =  torch.mean(loss).item()
-        loss = torch.mean(loss * weight)
+        loss = torch.mean(loss * weights)
  
         logs["loss"] =  loss.item()
         return loss, logs
+    
+    
+    
+    
+
+# FDS
+
+def calibrate_mean_var(matrix, m1, v1, m2, v2, clip_min=0.1, clip_max=10):
+    if torch.sum(v1) < 1e-10:
+        return matrix
+    if (v1 == 0.).any():
+        valid = (v1 != 0.)
+        factor = torch.clamp(v2[valid] / v1[valid], clip_min, clip_max)
+        matrix[:, valid] = (matrix[:, valid] - m1[valid]) * torch.sqrt(factor) + m2[valid]
+        return matrix
+
+    factor = torch.clamp(v2 / v1, clip_min, clip_max)
+    return (matrix - m1) * torch.sqrt(factor) + m2
+

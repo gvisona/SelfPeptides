@@ -2,6 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from scipy.ndimage import gaussian_filter1d, convolve1d
+from collections import Counter
+from scipy.signal.windows import triang
+import numpy as np
+from selfpeptide.utils.training_utils import calibrate_mean_var
+
 
 class ResNorm(nn.Module):
     # Post LN norm
@@ -62,13 +68,14 @@ class ResMLP_Network(nn.Module):
         self.device = device
         
         input_dim = config.get("mlp_input_dim", None)
+        output_dim = config.get("mlp_output_dim", config.get("output_dim", None))
         if input_dim is None:
             input_dim = 2*config["embedding_dim"]
         if input_dim==config["mlp_hidden_dim"]:    
             self.projection_model = ResMLP(config["mlp_num_layers"], config["mlp_hidden_dim"], config["output_dim"], config["dropout_p"])
         else:
             self.projection_model = nn.Sequential(nn.Linear(input_dim, config["mlp_hidden_dim"]),
-                                                  ResMLP(config["mlp_num_layers"], config["mlp_hidden_dim"], config["output_dim"]))
+                                                  ResMLP(config["mlp_num_layers"], config["mlp_hidden_dim"], output_dim))
         self.projection_model.to(device)
         
         self.apply(self._init_weights)
@@ -163,3 +170,124 @@ class PMA_MaskedAttention(nn.Module):
 
 #
 ####################################################
+
+
+
+class FDS(nn.Module):
+
+    def __init__(self, fds_feature_dim=512, IR_n_bins=50, fds_start_bin=0,
+                 fds_kernel='gaussian', fds_ks=5, fds_sigma=2, fds_momentum=0.9, device="cpu", **kwargs):
+        super(FDS, self).__init__()
+        self.feature_dim = fds_feature_dim
+        self.bucket_num = IR_n_bins
+        self.bucket_start = fds_start_bin
+        self.device = device
+        self.kernel_window = self._get_kernel_window(fds_kernel, fds_ks, fds_sigma)
+        self.half_ks = (fds_ks - 1) // 2
+        self.momentum = fds_momentum
+
+        self.register_buffer('running_mean', torch.zeros(IR_n_bins - fds_start_bin, fds_feature_dim))
+        self.register_buffer('running_var', torch.ones(IR_n_bins - fds_start_bin, fds_feature_dim))
+        self.register_buffer('running_mean_last_update', torch.zeros(IR_n_bins - fds_start_bin, fds_feature_dim))
+        self.register_buffer('running_var_last_update', torch.ones(IR_n_bins - fds_start_bin, fds_feature_dim))
+        self.register_buffer('smoothed_mean_last_update', torch.zeros(IR_n_bins - fds_start_bin, fds_feature_dim))
+        self.register_buffer('smoothed_var_last_update', torch.ones(IR_n_bins - fds_start_bin, fds_feature_dim))
+        self.register_buffer('num_samples_tracked', torch.zeros(IR_n_bins - fds_start_bin))
+
+    # @staticmethod
+    def _get_kernel_window(self, kernel, ks, sigma):
+        assert kernel in ['gaussian', 'triang', 'laplace']
+        half_ks = (ks - 1) // 2
+        if kernel == 'gaussian':
+            base_kernel = [0.] * half_ks + [1.] + [0.] * half_ks
+            base_kernel = np.array(base_kernel, dtype=np.float32)
+            kernel_window = gaussian_filter1d(base_kernel, sigma=sigma) / sum(gaussian_filter1d(base_kernel, sigma=sigma))
+        elif kernel == 'triang':
+            kernel_window = triang(ks) / sum(triang(ks))
+        else:
+            laplace = lambda x: np.exp(-abs(x) / sigma) / (2. * sigma)
+            kernel_window = list(map(laplace, np.arange(-half_ks, half_ks + 1))) / sum(map(laplace, np.arange(-half_ks, half_ks + 1)))
+
+        print(f'Using FDS: [{kernel.upper()}] ({ks}/{sigma})')
+        return torch.tensor(kernel_window, dtype=torch.float32).to(self.device)
+
+    def update_smoothed_stats(self):
+        self.running_mean_last_update = self.running_mean
+        self.running_var_last_update = self.running_var
+
+        self.smoothed_mean_last_update = F.conv1d(
+            input=F.pad(self.running_mean_last_update.unsqueeze(1).permute(2, 1, 0),
+                        pad=(self.half_ks, self.half_ks), mode='reflect'),
+            weight=self.kernel_window.view(1, 1, -1), padding=0
+        ).permute(2, 1, 0).squeeze(1)
+        self.smoothed_var_last_update = F.conv1d(
+            input=F.pad(self.running_var_last_update.unsqueeze(1).permute(2, 1, 0),
+                        pad=(self.half_ks, self.half_ks), mode='reflect'),
+            weight=self.kernel_window.view(1, 1, -1), padding=0
+        ).permute(2, 1, 0).squeeze(1)
+
+    def reset(self):
+        self.running_mean.zero_()
+        self.running_var.fill_(1)
+        self.running_mean_last_update.zero_()
+        self.running_var_last_update.fill_(1)
+        self.smoothed_mean_last_update.zero_()
+        self.smoothed_var_last_update.fill_(1)
+        self.num_samples_tracked.zero_()
+
+
+    def update_running_stats(self, features, labels):
+        assert self.feature_dim == features.size(1), "Input feature dimension is not aligned!"
+        assert features.size(0) == labels.size(0), "Dimensions of features and labels are not aligned!"
+
+        for label in torch.unique(labels):
+            if label > self.bucket_num - 1 or label < self.bucket_start:
+                continue
+            elif label == self.bucket_start:
+                curr_feats = features[labels <= label]
+            elif label == self.bucket_num - 1:
+                curr_feats = features[labels >= label]
+            else:
+                curr_feats = features[labels == label]
+            curr_num_sample = curr_feats.size(0)
+            curr_mean = torch.mean(curr_feats, 0)
+            curr_var = torch.var(curr_feats, 0, unbiased=True if curr_feats.size(0) != 1 else False)
+
+            self.num_samples_tracked[int(label - self.bucket_start)] += curr_num_sample
+            factor = self.momentum if self.momentum is not None else \
+                (1 - curr_num_sample / float(self.num_samples_tracked[int(label - self.bucket_start)]))
+            self.running_mean[int(label - self.bucket_start)] = \
+                (1 - factor) * curr_mean + factor * self.running_mean[int(label - self.bucket_start)]
+            self.running_var[int(label - self.bucket_start)] = \
+                (1 - factor) * curr_var + factor * self.running_var[int(label - self.bucket_start)]
+
+        # print(f"Updated running statistics with Epoch [{epoch}] features!")
+
+    def smooth(self, features, labels):
+        if labels.dim()>1:
+            labels = labels.squeeze(1)
+        for label in torch.unique(labels):
+            if label > self.bucket_num - 1 or label < self.bucket_start:
+                continue
+            elif label == self.bucket_start:
+                features[labels <= label] = calibrate_mean_var(
+                    features[labels <= label],
+                    self.running_mean_last_update[int(label - self.bucket_start)],
+                    self.running_var_last_update[int(label - self.bucket_start)],
+                    self.smoothed_mean_last_update[int(label - self.bucket_start)],
+                    self.smoothed_var_last_update[int(label - self.bucket_start)])
+            elif label == self.bucket_num - 1:
+                features[labels >= label] = calibrate_mean_var(
+                    features[labels >= label],
+                    self.running_mean_last_update[int(label - self.bucket_start)],
+                    self.running_var_last_update[int(label - self.bucket_start)],
+                    self.smoothed_mean_last_update[int(label - self.bucket_start)],
+                    self.smoothed_var_last_update[int(label - self.bucket_start)])
+            else:
+                features[labels == label] = calibrate_mean_var(
+                    features[labels == label],
+                    self.running_mean_last_update[int(label - self.bucket_start)],
+                    self.running_var_last_update[int(label - self.bucket_start)],
+                    self.smoothed_mean_last_update[int(label - self.bucket_start)],
+                    self.smoothed_var_last_update[int(label - self.bucket_start)])
+        return features

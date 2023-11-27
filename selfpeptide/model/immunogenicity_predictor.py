@@ -3,6 +3,7 @@ import torch.nn as nn
 from selfpeptide.model.peptide_embedder import PeptideEmbedder, SelfPeptideEmbedder_withProjHead
 from selfpeptide.model.binding_affinity_classifier import Peptide_HLA_BindingClassifier
 from selfpeptide.model.components import ResMLP_Network
+from selfpeptide.model.components import FDS
 import warnings
 import json
 
@@ -226,19 +227,36 @@ class ImmunogenicityBetaModel(nn.Module):
         self.epsilon = epsilon
         # assert config["output_dim"]==2, "Beta model requires 2 outputs"
         
-        self.joint_mlp = ResMLP_Network(config, device)        
+        self.joint_mlp = ResMLP_Network(config, device)  
+        
+        self.output_module = nn.Sequential(
+            nn.Linear(config["mlp_output_dim"], config["imm_regression_hidden_dim"]),
+            nn.ReLU(),
+            nn.Linear(config["imm_regression_hidden_dim"], 2)
+        )      
+        self.use_FDS = config.get("use_FDS", False)
+        if self.use_FDS:
+            self.fds = FDS(device=device, **config).to(self.device)
+        else:
+            self.fds = None
+        
+        
 
-    def forward(self, binding_score_logit, binding_peptides_embs, binding_hlas_embs, *args):
+    def forward(self, binding_score_logit, binding_peptides_embs, binding_hlas_embs, *args, target_labels=None):
         binding_score = torch.sigmoid(binding_score_logit).view(-1)
         mlp_input = torch.cat([binding_score.view(-1,1), binding_peptides_embs, binding_hlas_embs], dim=1)
         
-        mlp_output = self.joint_mlp(mlp_input)
+        joint_embs = self.joint_mlp(mlp_input)
+        classifier_input = joint_embs.clone()
+        if target_labels is not None:
+            classifier_input = self.fds.smooth(joint_embs, target_labels)
+        output = self.output_module(joint_embs)
         
-        means = self.epsilon + (1-2*self.epsilon) * torch.sigmoid(mlp_output[:, 0])
+        means = self.epsilon + (1-2*self.epsilon) * torch.sigmoid(output[:, 0])
         posterior_means = binding_score * means
-        precisions = 2 + torch.exp(mlp_output[:, 1])
+        precisions = 2 + torch.exp(output[:, 1])
         
-        return torch.hstack([means.view(-1,1), posterior_means.view(-1,1), precisions.view(-1,1)])
+        return torch.hstack([means.view(-1,1), posterior_means.view(-1,1), precisions.view(-1,1)]), joint_embs
     
     
 class JointPeptidesNetwork_Beta(nn.Module):
@@ -264,7 +282,11 @@ class JointPeptidesNetwork_Beta(nn.Module):
         self.immunogenicity_model = ImmunogenicityBetaModel(imm_config, device=device)
         self.immunogenicity_model.train()
     
-    def forward(self, peptides, hla_pseudoseqs, hla_prots, *args):
-        binding_score_logit, (binding_peptides_embs, binding_hlas_embs) = self.binding_model(peptides, hla_pseudoseqs, hla_prots)
-        output = self.immunogenicity_model(binding_score_logit, binding_peptides_embs, binding_hlas_embs)
-        return torch.hstack([torch.sigmoid(binding_score_logit).view(-1,1), output])
+    def forward(self, peptides, hla_pseudoseqs, hla_prots, *args, target_labels=None):
+        binding_score_logit, (joint_embeddings, binding_peptides_embs, binding_hlas_embs) = self.binding_model(peptides, hla_pseudoseqs, hla_prots)
+        output, imm_joint_embs = self.immunogenicity_model(binding_score_logit, binding_peptides_embs, binding_hlas_embs, target_labels=target_labels)
+        predictions = torch.hstack([torch.sigmoid(binding_score_logit).view(-1,1), output])
+        if target_labels is None:
+            return predictions
+        else:
+            return predictions, imm_joint_embs

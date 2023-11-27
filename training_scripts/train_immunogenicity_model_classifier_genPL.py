@@ -15,7 +15,7 @@ from selfpeptide.utils.data_utils import load_immunogenicity_dataframes_calibrat
 from selfpeptide.utils.data_utils import SequencesInteractionDataset_returnHLA, SequencesInteractionDataset
 from selfpeptide.utils.training_utils import get_class_weights, sigmoid
 from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule, eval_classification_metrics
-from selfpeptide.model.immunogenicity_classifier import JointPeptidesNetwork_Classifier
+from selfpeptide.model.immunogenicity_predictor import JointPeptidesNetwork_Classifier
 from selfpeptide.utils.constants import *
 
 def train(config=None, init_wandb=True):

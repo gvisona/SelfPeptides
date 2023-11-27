@@ -14,11 +14,11 @@ from scipy.stats import beta
 from tqdm import tqdm
 from selfpeptide.utils.data_utils import load_immunogenicity_dataframes_jointseqs, BetaDistributionDataset, SequencesInteractionDataset
 from selfpeptide.utils.training_utils import find_optimal_class_threshold, BetaChernoffDistance
-from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule
+from selfpeptide.utils.training_utils import lr_schedule, warmup_constant_lr_schedule, get_LDS_loss_weights
 from selfpeptide.utils.training_utils import eval_beta_metrics, eval_regression_metrics, eval_classification_metrics
 from selfpeptide.utils.beta_distr_utils import *
 from selfpeptide.utils.model_utils import load_binding_model, load_sns_model
-from selfpeptide.model.immunogenicity_classifier import JointPeptidesNetwork_Beta
+from selfpeptide.model.immunogenicity_predictor import JointPeptidesNetwork_Beta
 
 def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
@@ -116,8 +116,16 @@ def train(config=None, init_wandb=True):
         
     max_iters = config["max_updates"] * config["accumulate_batches"] + 1
     
+    bins, bin_weights, emp_label_dist, eff_label_dist = get_LDS_loss_weights(train_df["Distr. Mean"], 
+                                                                                config["IR_n_bins"], 
+                                                                                config["LDS_kernel"], 
+                                                                                config["LDS_ks"], 
+                                                                                config["LDS_sigma"])
+
+    bins = torch.tensor(bins).to(device)
+    bin_weights = torch.tensor(bin_weights).to(device)
         
-    beta_loss = BetaChernoffDistance(config, device=device) 
+    beta_loss = BetaChernoffDistance(config, device=device, bins=bins, bin_weights=bin_weights) 
     
     checkpoints_folder = os.path.join(output_folder, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok=True)
@@ -187,7 +195,8 @@ def train(config=None, init_wandb=True):
         n_iter = resume_config["n_iter"]
         max_iters += n_iter   
         
-        
+    apply_fds_smoothing = False
+    early_stopping = False
     while n_iter < max_iters:
         for batch_ix, train_batch in enumerate(train_loader):
             n_iter += 1
@@ -238,7 +247,14 @@ def train(config=None, init_wandb=True):
                     imm_beta = imm_beta.float().to(device)
                     imm_target = imm_target.float().to(device)
                     
-                    predictions = model(peptides, hla_pseudoseqs, hla_prots)
+                    target_labels = None
+                    if apply_fds_smoothing:
+                        target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(imm_alpha, imm_beta)
+                        target_labels = torch.bucketize(target_means, bins, right=True) - 1
+                    
+                        predictions, imm_joint_embs = model(peptides, hla_pseudoseqs, hla_prots, target_labels=target_labels)
+                    else:
+                        predictions = model(peptides, hla_pseudoseqs, hla_prots, target_labels=target_labels)
 
                     loss, val_loss_logs = beta_loss(predictions, imm_alpha, imm_beta)
                     val_loss_logs = {"val/"+str(k): v for k, v in val_loss_logs.items()}
@@ -263,7 +279,9 @@ def train(config=None, init_wandb=True):
                     if not isinstance(pred_precisions, list):
                         pred_precisions = [pred_precisions]
                     val_pred_precisions.extend(pred_precisions)        
-                    
+                
+                val_pred_means = np.array(val_pred_means)
+                val_pred_precisions = np.array(val_pred_precisions)
                 val_pred_alphas, val_pred_betas, val_pred_vars, val_pred_modes = beta_distr_params_from_mean_precision(val_pred_means, val_pred_precisions)
 
                 class_targets = val_df["Target"].values
@@ -279,9 +297,24 @@ def train(config=None, init_wandb=True):
                 val_regression_mean_metrics = eval_regression_metrics(regression_mean_targets, val_pred_means)
                 val_regression_mean_metrics = {"val_mean_regr/"+k: v for k, v in val_regression_mean_metrics.items()}
                 
+                ixs_low_targets = np.where(regression_mean_targets<0.5)[0]
+                ixs_high_targets = np.where(regression_mean_targets>=0.5)[0]
+                val_regression_mean_metrics_low = eval_regression_metrics(regression_mean_targets[ixs_low_targets], val_pred_means[ixs_low_targets])
+                val_regression_mean_metrics_low = {"val_mean_regr_low/"+k: v for k, v in val_regression_mean_metrics_low.items()}
+                val_regression_mean_metrics_high = eval_regression_metrics(regression_mean_targets[ixs_high_targets], val_pred_means[ixs_high_targets])
+                val_regression_mean_metrics_high = {"val_mean_regr_high/"+k: v for k, v in val_regression_mean_metrics_high.items()}
+                
                 regression_mode_targets = val_df["Distr. Mode"].values
                 val_regression_mode_metrics = eval_regression_metrics(regression_mode_targets, val_pred_modes)
                 val_regression_mode_metrics = {"val_mode_regr/"+k: v for k, v in val_regression_mode_metrics.items()}
+                
+                                
+                ixs_low_targets = np.where(regression_mode_targets<0.5)[0]
+                ixs_high_targets = np.where(regression_mode_targets>=0.5)[0]
+                val_regression_mode_metrics_low = eval_regression_metrics(regression_mode_targets[ixs_low_targets], val_pred_modes[ixs_low_targets])
+                val_regression_mode_metrics_low = {"val_mode_regr_low/"+k: v for k, v in val_regression_mode_metrics_low.items()}
+                val_regression_mode_metrics_high = eval_regression_metrics(regression_mode_targets[ixs_high_targets], val_pred_modes[ixs_high_targets])
+                val_regression_mode_metrics_high = {"val_mode_regr_high/"+k: v for k, v in val_regression_mode_metrics_high.items()}
                 
                 target_means = val_df["Distr. Mean"].values
                 target_precisions = val_df["Distr. Precision"].values
@@ -313,7 +346,8 @@ def train(config=None, init_wandb=True):
                 
                 current_lr = scheduler.get_last_lr()[0]
                 logs = {"learning_rate": current_lr, 
-                        "accumulated_batch": n_update}
+                        "accumulated_batch": n_update,
+                        "FDS Smoothing": int(apply_fds_smoothing)}
                 
                 logs.update(avg_train_logs)
                 logs.update(avg_val_logs)
@@ -324,13 +358,56 @@ def train(config=None, init_wandb=True):
                 logs.update(val_regression_mean_metrics)
                 logs.update(val_regression_mode_metrics)
                 
+                logs.update(val_regression_mean_metrics_low)
+                logs.update(val_regression_mean_metrics_high)
+                logs.update(val_regression_mode_metrics_low)
+                logs.update(val_regression_mode_metrics_high)
+                
+                
                 wandb.log(logs)      
                 avg_train_logs = None
                 
             if config.get("early_stopping", False):
                 if (n_iter - best_metric_iter)/n_iters_per_val_cycle>config['patience']:
                     print("Val loss not improving, stopping training..\n\n")
+                    early_stopping = True
                     break
+                
+            break #TODO REMOVE
+            
+        if early_stopping:
+            break
+                
+        # Update FDS statistics
+        model.eval()
+        encodings, labels = [], []
+        with torch.no_grad():
+            for batch_ix, train_batch in enumerate(train_loader):
+                peptides, hla_pseudoseqs, hla_prots = train_batch[:3]
+                imm_alpha, imm_beta, imm_target = train_batch[3:]
+                
+                imm_alpha = imm_alpha.float().to(device)
+                imm_beta = imm_beta.float().to(device)
+                imm_target = imm_target.float().to(device)
+                
+                target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(imm_alpha, imm_beta)
+                target_labels = torch.bucketize(target_means, bins, right=True) - 1
+                predictions, embeddings = model(peptides, hla_pseudoseqs, hla_prots, target_labels=target_labels)
+
+                encodings.append(embeddings.detach())
+                labels.append(target_labels.detach())
+                
+                if batch_ix>10:
+                    break
+        model.train()
+        encodings = torch.vstack(encodings)
+        labels = torch.hstack(labels)
+        
+        model.immunogenicity_model.fds.update_smoothed_stats()
+        model.immunogenicity_model.fds.update_running_stats(encodings, labels)
+        if not apply_fds_smoothing:
+            print("Applying FDS smoothing")
+            apply_fds_smoothing = True
 
 
     pbar.close()
@@ -522,9 +599,9 @@ if __name__=="__main__":
     parser.add_argument("--pseudo_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv")
     parser.add_argument("--hla_prot_seq_file", type=str, default="/home/gvisona/Projects/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv")
     
-    parser.add_argument("--binding_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/BindingModels/solar-sweep-1/config.json")
+    parser.add_argument("--binding_model_config", type=str, default="/home/gvisona/Projects/SelfPeptides/trained_models/BindingModels/floral-sweep-3/config.json")
     parser.add_argument("--binding_model_checkpoint", type=str, 
-                        default="/home/gvisona/Projects/SelfPeptides/trained_models/BindingModels/solar-sweep-1/checkpoints/001_checkpoint.pt")
+                        default="/home/gvisona/Projects/SelfPeptides/trained_models/BindingModels/floral-sweep-3/checkpoints/001_checkpoint.pt")
 
      
     parser.add_argument("--dropout_p", type=float, default=0.15)
@@ -532,17 +609,12 @@ if __name__=="__main__":
     parser.add_argument("--mlp_input_dim", type=int, default=1025)
     parser.add_argument("--mlp_hidden_dim", type=int, default=2048)
     parser.add_argument("--mlp_num_layers", type=int, default=2)
-    parser.add_argument("--output_dim", type=int, default=2)
+    parser.add_argument("--mlp_output_dim", type=int, default=512)
+    parser.add_argument("--imm_regression_hidden_dim", type=int, default=2048)
 
 
-    
-    # ]
-    # parser.add_argument("--regression_weight", type=float, default=1.0)
-    # parser.add_argument("--kl_weight", type=float, default=1.0)
-    # parser.add_argument("--kl_loss_type", type=str, default="forward")
-    # parser.add_argument("--target_metric", type=str, default="F1")
-    
-    parser.add_argument("--max_updates", type=int, default=5)
+
+    parser.add_argument("--max_updates", type=int, default=50)
     parser.add_argument("--patience", type=int, default=1000)
     parser.add_argument("--validate_every_n_updates", type=int, default=1)
     
@@ -556,6 +628,20 @@ if __name__=="__main__":
     
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--accumulate_batches", type=int, default=1)
+    
+    parser.add_argument("--IR_n_bins", type=int, default=50)
+    
+    parser.add_argument("--LDS_kernel", type=str, default="triang")
+    parser.add_argument("--LDS_ks", type=int, default=11)
+    parser.add_argument("--LDS_sigma", type=int, default=1.0)
+    parser.add_argument("--loss_weights", type=str, default="LDS_weights")
+    
+    parser.add_argument("--use_FDS", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--fds_start_bin", type=int, default=0)
+    parser.add_argument("--fds_kernel", type=str, default='gaussian')
+    parser.add_argument("--fds_ks", type=int, default=11)
+    parser.add_argument("--fds_sigma", type=float, default=2.0)
+    parser.add_argument("--fds_momentum", type=float, default=0.9)
     
     
     parser.add_argument("--lr", type=float, default=1e-4)
