@@ -373,7 +373,7 @@ def train(config=None, init_wandb=True):
                     early_stopping = True
                     break
                 
-            break #TODO REMOVE
+            # break #TODO REMOVE
             
         if early_stopping:
             break
@@ -397,8 +397,8 @@ def train(config=None, init_wandb=True):
                 encodings.append(embeddings.detach())
                 labels.append(target_labels.detach())
                 
-                if batch_ix>10:
-                    break
+                # if batch_ix>10:
+                #     break
         model.train()
         encodings = torch.vstack(encodings)
         labels = torch.hstack(labels)
