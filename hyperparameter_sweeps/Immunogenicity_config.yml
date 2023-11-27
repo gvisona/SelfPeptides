@@ -70,9 +70,9 @@ parameters:
   pretrained_aa_embeddings:
     value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
   binding_model_config:
-    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-1/config.json"
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-3/config.json"
   binding_model_checkpoint:
-    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-1/checkpoints/001_checkpoint.pt"
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-3/checkpoints/001_checkpoint.pt"
   wandb_sweep:
     value: True
   use_posterior_mean:
