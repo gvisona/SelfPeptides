@@ -12,7 +12,7 @@ parameters:
   experiment_group:
     value: IEDB_BetaRegression_Regr
   experiment_name:
-    value: Beta_ProtSeqs_Regr_DIR
+    value: Beta_ProtSeqs_Regr_DIR_2
   immunogenicity_df:
     value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv
   dhlap_df:
@@ -24,7 +24,7 @@ parameters:
   lr:
     distribution: log_uniform_values
     min: 1e-6
-    max: 5e-3
+    max: 5e-4
   momentum:
     value: 0.99
   nesterov_momentum:
@@ -103,6 +103,7 @@ parameters:
     - 21
   fds_sigma:
     values:
+    - 1.0
     - 2.0
     - 4.0
   fds_momentum:

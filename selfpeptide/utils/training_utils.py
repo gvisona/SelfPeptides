@@ -45,7 +45,7 @@ def get_LDS_loss_weights(target_labels, n_bins, kernel, ks, sigma):
     lds_kernel_window = get_lds_kernel_window(kernel=kernel, ks=ks, sigma=sigma)
     eff_label_dist = convolve1d(np.array(emp_label_dist), weights=lds_kernel_window, mode='constant')
     weight_per_bin = np.array([np.float32(1 / x) for x in eff_label_dist])
-    weight_per_bin = weight_per_bin/np.sum(weight_per_bin)
+    weight_per_bin = weight_per_bin/np.max(weight_per_bin)
     return bins, weight_per_bin, emp_label_dist, eff_label_dist
 
 
