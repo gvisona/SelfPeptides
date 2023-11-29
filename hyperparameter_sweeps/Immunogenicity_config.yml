@@ -24,13 +24,13 @@ parameters:
   lr:
     distribution: log_uniform_values
     min: 1e-6
-    max: 5e-4
+    max: 7e-4
   momentum:
     value: 0.99
   nesterov_momentum:
     value: True
   max_updates:
-    value: 20000
+    value: 50000
   min_frac:
     value: 0.1
   project_folder:
@@ -48,7 +48,7 @@ parameters:
   weight_decay:
     value: 0.00001
   early_stopping:
-    value: True
+    value: False
   patience:
     value: 200
   dropout_p:
