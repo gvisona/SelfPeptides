@@ -14,11 +14,11 @@ parameters:
   experiment_group:
     value: FinetuneESM2
   experiment_name:
-    value: devel_ESM_sweep
+    value: ESM_sweep_1
   lr:
     distribution: log_uniform_values 
-    max: 1.0e-3
-    min: 1e-8
+    max: 1.0e-5
+    min: 1e-10
   momentum:
     values: 
     - 0.9
@@ -26,7 +26,7 @@ parameters:
   nesterov_momentum:
     value: True
   max_updates:
-    value: 20
+    value: 1000
   min_frac:
     value: 0.1
   project_folder:
@@ -42,15 +42,18 @@ parameters:
   test_size:
     value: 0.15
   validate_every_n_updates:
-    value: 2
+    value: 10
   weight_decay:
-    value: 0.0
+    values: 
+    - 0.0
+    - 1e-5
+    - 1e-4
   early_stopping:
     value: False
   patience:
     value: 10000
   test_run:
-    value: True
+    value: False
   wandb_sweep:
     value: True
   pretrained_model:
