@@ -149,7 +149,7 @@ def finetune_model(config=None, init_wandb=True):
 
         encoded_batch = tokenizer(train_batch, return_tensors="pt", padding=True)#.to(device)
         masked_batch = mask_tokenized_inputs(encoded_batch, mlm_fraction=config["mlm_fraction"], mask_token_id=tokenizer.mask_token_id).to(device)
-        labels = torch.where(masked_batch.input_ids == tokenizer.mask_token_id, encoded_batch["input_ids"], -100)
+        labels = torch.where(masked_batch.input_ids == tokenizer.mask_token_id, encoded_batch["input_ids"].to(device), -100)
         outputs = model(**masked_batch, labels=labels, output_hidden_states=False)
         loss = outputs.loss
         train_loss_logs = {"train/loss": loss.item()}
@@ -179,7 +179,7 @@ def finetune_model(config=None, init_wandb=True):
             for ix, val_batch in enumerate(val_loader):
                 encoded_batch = tokenizer(val_batch, return_tensors="pt", padding=True)#.to(device)
                 masked_batch = mask_tokenized_inputs(encoded_batch, mlm_fraction=config["mlm_fraction"], mask_token_id=tokenizer.mask_token_id).to(device)
-                labels = torch.where(masked_batch.input_ids == tokenizer.mask_token_id, encoded_batch["input_ids"], -100)
+                labels = torch.where(masked_batch.input_ids == tokenizer.mask_token_id, encoded_batch["input_ids"].to(device), -100)
                 outputs = model(**masked_batch, labels=labels, output_hidden_states=False)
                 loss = outputs.loss
                 val_loss_logs = {"val/loss": loss.item()}
@@ -241,7 +241,7 @@ def finetune_model(config=None, init_wandb=True):
     for ix, test_batch in tqdm(enumerate(test_loader)):
         encoded_batch = tokenizer(test_batch, return_tensors="pt", padding=True)#.to(device)
         masked_batch = mask_tokenized_inputs(encoded_batch, mlm_fraction=config["mlm_fraction"], mask_token_id=tokenizer.mask_token_id).to(device)
-        labels = torch.where(masked_batch.input_ids == tokenizer.mask_token_id, encoded_batch["input_ids"], -100)
+        labels = torch.where(masked_batch.input_ids == tokenizer.mask_token_id, encoded_batch["input_ids"].to(device), -100)
         outputs = model(**masked_batch, labels=labels, output_hidden_states=False)
         loss = outputs.loss
         test_loss_logs = {"test/loss": loss.item()}
