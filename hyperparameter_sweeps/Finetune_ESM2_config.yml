@@ -1,0 +1,63 @@
+method: random
+metric:
+  goal: minimize
+  name: train/loss
+parameters:
+  accumulate_batches:
+    value: 1
+  batch_size:
+    values: 
+    - 32
+    - 64
+  cool_down:
+    value: 0.8
+  experiment_group:
+    value: FinetuneESM2
+  experiment_name:
+    value: devel_ESM_sweep
+  lr:
+    distribution: log_uniform_values 
+    max: 1.0e-3
+    min: 1e-8
+  momentum:
+    values: 
+    - 0.9
+    - 0.99
+  nesterov_momentum:
+    value: True
+  max_updates:
+    value: 20
+  min_frac:
+    value: 0.1
+  project_folder:
+    value: /fast/gvisona/SelfPeptides
+  data_folder:
+    value: /home/gvisona/SelfPeptides
+  ramp_up:
+    value: 0.1
+  seed:
+    value: 0
+  val_size:
+    value: 0.1
+  validate_every_n_updates:
+    value: 2
+  weight_decay:
+    value: 0.0
+  early_stopping:
+    value: False
+  patience:
+    value: 10000
+  test_run:
+    value: True
+  wandb_sweep:
+    value: True
+  pretrained_model:
+    value: "facebook/esm2_t12_35M_UR50D"
+  mlm_fraction:
+    value: 0.15
+  peptides_dataframes:
+    value:
+      - "processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv"
+      - "processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv"
+      - "processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv"
+      - "processed_data/Binding_Affinity/HLA_Ligand_Atlas_processed.csv"
