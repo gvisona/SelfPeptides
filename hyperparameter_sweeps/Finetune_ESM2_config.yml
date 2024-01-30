@@ -14,7 +14,7 @@ parameters:
   experiment_group:
     value: FinetuneESM2
   experiment_name:
-    value: ESM_sweep_1
+    value: ESM_sweep_1_anomaly
   lr:
     distribution: log_uniform_values 
     max: 1.0e-5

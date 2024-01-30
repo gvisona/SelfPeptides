@@ -17,6 +17,8 @@ from selfpeptide.utils.training_utils import warmup_constant_lr_schedule
 from tqdm import tqdm
 from copy import deepcopy
 
+from selfpeptide.utils.constants import MIN_PEPTIDE_LEN, MAX_PEPTIDE_LEN
+
 
 
 class PeptidesDataset(Dataset):
@@ -39,7 +41,7 @@ def mask_tokenized_inputs(tokenized_dict, mlm_fraction=0.15, mask_token_id=32):
     col_ixs = []
     
     for i, l in enumerate(lengths):
-        n_masked_tokens = int(mlm_fraction*l)
+        n_masked_tokens = max(int(mlm_fraction*l), 1)
         row_ixs.extend([i]*n_masked_tokens)
         col_ixs.append(np.random.choice(list(range(l)), size=n_masked_tokens, replace=False))
     col_ixs = np.concatenate(col_ixs)
@@ -63,7 +65,7 @@ def finetune_model(config=None, init_wandb=True):
     
     run_name = wandb.run.name
     # run_name = None
-    # torch.autograd.set_detect_anomaly(True) # DEUGGING
+    torch.autograd.set_detect_anomaly(True) # DEUGGING
     if config["run_number"] is None:
         config["run_number"] = config["seed"]
     if run_name is None or len(run_name) < 1 or not config["wandb_sweep"]:
@@ -95,6 +97,8 @@ def finetune_model(config=None, init_wandb=True):
     n_peptides = len(peptides_set)
     print(f"Total number of peptides: {n_peptides}")
     peptides_set = sorted(list(peptides_set))
+    peptides_set = [p for p in peptides_set if len(p)>=MIN_PEPTIDE_LEN and len(p)<=MAX_PEPTIDE_LEN]
+    print(f"Total number of peptides: {n_peptides}")
 
 
     if config.get("test_run", False):
@@ -300,6 +304,7 @@ if __name__=="__main__":
     parser.add_argument("--min_frac", type=float, default=0.01)
     parser.add_argument("--ramp_up", type=float, default=0.3)
     parser.add_argument("--cool_down", type=float, default=0.6)
+    parser.add_argument("--wandb_sweep", action=argparse.BooleanOptionalAction, default=False)
     
     
     args = parser.parse_args()
