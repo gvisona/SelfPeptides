@@ -6,23 +6,17 @@ parameters:
   accumulate_batches:
     value: 1
   batch_size:
-    values: 
-    - 32
-    - 64
+    value: 64
   cool_down:
     value: 0.8
   experiment_group:
     value: FinetuneESM2
   experiment_name:
-    value: ESM_sweep_2
+    value: ESM_sweep_3
   lr:
-    distribution: log_uniform_values 
-    max: 1.0e-6
-    min: 1e-10
+    value: 0.000000369224483345
   momentum:
-    values: 
-    - 0.9
-    - 0.99
+    value: 0.99
   nesterov_momentum:
     value: True
   max_updates:
@@ -36,7 +30,9 @@ parameters:
   ramp_up:
     value: 0.1
   seed:
-    value: 0
+    distribution: int_uniform
+    min: 0
+    max: 100000
   val_size:
     value: 0.1
   test_size:
@@ -44,10 +40,7 @@ parameters:
   validate_every_n_updates:
     value: 10
   weight_decay:
-    values: 
-    - 0.0
-    - 1e-5
-    - 1e-4
+    value: 1e-5
   early_stopping:
     value: False
   patience:
