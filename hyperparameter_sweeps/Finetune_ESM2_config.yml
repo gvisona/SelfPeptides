@@ -62,6 +62,6 @@ parameters:
       - "processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv"
       - "processed_data/Binding_Affinity/HLA_Ligand_Atlas_processed.csv"
   resume_checkpoint_path:
-    value: /lustre/fast/fast/gvisona/SelfPeptides/outputs/FinetuneESM2/ESM_sweep_3/proud-sweep-12/checkpoints/001_checkpoint
+    value: /lustre/fast/fast/gvisona/SelfPeptides/outputs/FinetuneESM2/ESM_sweep_3/proud-sweep-12/checkpoints/001_checkpoint.pt
   force_restart:
     value: False
