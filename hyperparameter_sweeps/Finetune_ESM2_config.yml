@@ -1,7 +1,7 @@
 method: random
 metric:
   goal: minimize
-  name: train/loss
+  name: val/loss
 parameters:
   accumulate_batches:
     value: 1
@@ -12,7 +12,7 @@ parameters:
   experiment_group:
     value: FinetuneESM2
   experiment_name:
-    value: ESM_sweep_3
+    value: ESM_sweep_3_cont
   lr:
     value: 0.000000369224483345
   momentum:
@@ -30,6 +30,8 @@ parameters:
   ramp_up:
     value: 0.1
   seed:
+    value: 23217
+  seed2:
     distribution: int_uniform
     min: 0
     max: 100000
@@ -59,3 +61,7 @@ parameters:
       - "processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv"
       - "processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv"
       - "processed_data/Binding_Affinity/HLA_Ligand_Atlas_processed.csv"
+  resume_checkpoint_path:
+    value: /lustre/fast/fast/gvisona/SelfPeptides/outputs/FinetuneESM2/ESM_sweep_3/proud-sweep-12/checkpoints/001_checkpoint
+  force_restart:
+    value: False

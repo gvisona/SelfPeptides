@@ -86,7 +86,7 @@ def finetune_model(config=None, init_wandb=True):
         
     checkpoint_fname = "001_checkpoint.pt"    
     checkpoint_path = os.path.join(checkpoints_folder, checkpoint_fname)
-    # wandb.run.summary["checkpoints/Checkpoint_path"] = checkpoint_path
+    wandb.run.summary["checkpoints/Checkpoint_path"] = checkpoint_path
     checkpoint_label = checkpoint_fname.split(".")[0]
 
     peptides_set = set()
@@ -122,6 +122,12 @@ def finetune_model(config=None, init_wandb=True):
     model = AutoModelForMaskedLM.from_pretrained(config["pretrained_model"])
     model.to(device)
     
+    resume_checkpoint_path = config.get("resume_checkpoint_path", None)
+    if resume_checkpoint_path is not None and not config["force_restart"]:
+        print("Resuming training from checkpoint {}".format(resume_checkpoint_path))
+        model.load_state_dict(torch.load(resume_checkpoint_path))
+        wandb.run.summary["checkpoints/Resuming_checkpoint"] = resume_checkpoint_path
+    
     optimizer = torch.optim.SGD(model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
                                 nesterov=config.get("nesterov_momentum", False),
                                 weight_decay=config['weight_decay'])
@@ -135,9 +141,11 @@ def finetune_model(config=None, init_wandb=True):
     n_iters_per_val_cycle = config["accumulate_batches"] * config["validate_every_n_updates"]    
     
     
-    
-    def lr_lambda(s): return warmup_constant_lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
-                                         ramp_up=config['ramp_up'])
+    if resume_checkpoint_path is not None and not config["force_restart"]:
+        def lr_lambda(s): return warmup_constant_lr_schedule(s, min_frac=config['min_frac'], total_iters=config["max_updates"],
+                                            ramp_up=config['ramp_up'])
+    else:
+        lr_lambda = lambda s: 1.0
     
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
@@ -230,10 +238,10 @@ def finetune_model(config=None, init_wandb=True):
             wandb.log(logs)      
             avg_train_logs = None
             
-        # if config.get("early_stopping", False):
-        #     if (n_iter - best_loss_iter)/n_iters_per_val_cycle>config['patience']:
-        #         print("Val loss not improving, stopping training..\n\n")
-        #         break
+        if config.get("early_stopping", False):
+            if (n_iter - best_loss_iter)/n_iters_per_val_cycle>config['patience']:
+                print("Val loss not improving, stopping training..\n\n")
+                break
         
     print(os.path.exists(checkpoint_path))
     print(f"\nLoading state dict from {checkpoint_path}\n\n")
@@ -288,7 +296,7 @@ if __name__=="__main__":
     parser.add_argument("--mlm_fraction", type=float, default=0.15)
     
     parser.add_argument("--max_updates", type=int, default=5)
-    parser.add_argument("--patience", type=int, default=1000)
+    parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--validate_every_n_updates", type=int, default=1)
     parser.add_argument("--accumulate_batches", type=int, default=1)
     
@@ -305,6 +313,7 @@ if __name__=="__main__":
     parser.add_argument("--ramp_up", type=float, default=0.3)
     parser.add_argument("--cool_down", type=float, default=0.6)
     parser.add_argument("--wandb_sweep", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--force_restart", action=argparse.BooleanOptionalAction, default=False)
     
     
     args = parser.parse_args()
