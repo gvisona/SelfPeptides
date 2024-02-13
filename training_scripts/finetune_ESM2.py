@@ -8,10 +8,10 @@ from os.path import join, exists
 import json
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 import torch
+from torch.utils.data import Dataset, DataLoader
 import argparse
 from argparse import ArgumentParser
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader
 import wandb
 from selfpeptide.utils.training_utils import warmup_constant_lr_schedule
 from tqdm import tqdm

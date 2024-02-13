@@ -1,0 +1,114 @@
+method: random
+metric:
+  goal: minimize
+  name: val/loss
+parameters:
+  accumulate_batches:
+    value: 8
+  batch_size:
+    value: 16
+  cool_down:
+    value: 0.8
+  experiment_group:
+    value: IEDB_BetaRegression_ESM2
+  experiment_name:
+    value: Beta_ProtSeqs_Regr_DIR_2_ESM2
+  immunogenicity_df:
+    value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv
+  dhlap_df:
+    value: /home/gvisona/SelfPeptides/processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv
+  pseudo_seq_file:
+    value: /home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv
+  hla_prot_seq_file:
+    value: /home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv
+  idx2peptide_mapping:
+    value: /home/gvisona/SelfPeptides/processed_data/Peptide_embeddings/ESM2_idx2peptide.json
+  esm2_peptide_embeddings:
+    value: /home/gvisona/SelfPeptides/processed_data/Peptide_embeddings/FinetunedESM2_imm_peptides_embeddings.npy
+  lr:
+    distribution: log_uniform_values
+    min: 1e-6
+    max: 7e-4
+  momentum:
+    value: 0.99
+  nesterov_momentum:
+    value: True
+  max_updates:
+    value: 50000
+  min_frac:
+    value: 0.1
+  project_folder:
+    value: /fast/gvisona/SelfPeptides
+  ramp_up:
+    value: 0.1
+  seed:
+    value: 10384
+  test_size:
+    value: 0.15
+  val_size:
+    value: 0.1
+  validate_every_n_updates:
+    value: 16
+  weight_decay:
+    value: 0.00001
+  early_stopping:
+    value: False
+  patience:
+    value: 200
+  dropout_p:
+    value: 0.05
+  embedding_dim:
+    value: 512
+  mlp_input_dim:
+    value: 480
+  mlp_hidden_dim:
+    value: 2048
+  mlp_num_layers:
+    value: 4
+  mlp_output_dim: 
+    value: 512
+  imm_regression_hidden_dim:
+    value: 2048
+  min_subjects_tested:
+    value: 1
+  pretrained_aa_embeddings:
+    value: "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy"
+  binding_model_config:
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-3/config.json"
+  binding_model_checkpoint:
+    value: "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-3/checkpoints/001_checkpoint.pt"
+  wandb_sweep:
+    value: True
+  use_posterior_mean:
+    value: False
+  IR_n_bins:
+   value: 50
+  LDS_kernel:
+    value: "gaussian"
+  LDS_ks:
+    value: 11
+  LDS_sigma:
+    value: 1.5
+  loss_weights:
+    value: "LDS_weights"
+  use_FDS:
+    value: True
+  fds_start_bin:
+    value: 0
+  fds_kernel:
+    value: "gaussian"
+  fds_ks:
+    values:
+    - 11
+    - 15
+    - 7
+    - 21
+  fds_sigma:
+    values:
+    - 1.0
+    - 2.0
+    - 4.0
+  fds_momentum:
+    value: 0.9
+  
+  

@@ -705,3 +705,24 @@ class BetaDistributionDataset(Dataset):
     
     def __getitem__(self, ix):
         return self.data_matrix[ix]
+
+
+
+class BetaDistributionDataset_ESM2Embs(Dataset):
+    def __init__(self, df, peptide_embs, peptide2idx_mapping, hla_repr=["Allele Pseudo-sequence"]):
+        super().__init__()
+        cols = ["Peptide", *hla_repr, 
+                "Alpha", "Beta", "Target"]
+        self.data_matrix = df[cols].values.tolist()
+        
+        peptides = df["Peptide"].values
+        idxs = [int(peptide2idx_mapping[p]) for p in peptides]
+        # print(idxs)
+        self.peptide_esm2_embeddings = [peptide_embs[i] for i in idxs]
+        
+        
+    def __len__(self):
+        return len(self.data_matrix)
+    
+    def __getitem__(self, ix):
+        return self.data_matrix[ix], self.peptide_esm2_embeddings[ix]
