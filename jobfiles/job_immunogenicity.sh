@@ -29,13 +29,10 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_immunogenicity_model.p
 --loss_weights "LDS_weights" --constraints_weight 0.01 \
 --imm_regression_hidden_dim 2048 \
 --mlp_input_dim 1025 --mlp_output_dim 512 \
---embedding_dim 512 --mlp_hidden_dim 2048 --mlp_num_layers 2 --output_dim 1 \
---PMA_num_heads 4 --PMA_ln --num_heads 4 --transf_hidden_dim 512 --n_attention_layers 2 \
---hla_repr "Allele Pseudo-sequence" --early_stopping --patience 2000 \
+--mlp_hidden_dim 2048 --mlp_num_layers 2 \
+--early_stopping --patience 2000 \
 --project_folder "/fast/gvisona/SelfPeptides" \
---pretrained_aa_embeddings "/home/gvisona/SelfPeptides/processed_data/aa_embeddings/learned_BA_AA_embeddings.npy" \
 --init_checkpoint "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt" \
---binding_affinity_df "/home/gvisona/SelfPeptides/processed_data/Binding_Affinity/DHLAP_binding_affinity_data.csv" \
 --pseudo_seq_file "/home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv" \
 --hla_prot_seq_file "/home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv" \
 --immunogenicity_df "/home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv" \

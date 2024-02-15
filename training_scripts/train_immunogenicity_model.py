@@ -698,6 +698,7 @@ if __name__=="__main__":
     parser.add_argument("--try_to_overfit", action=argparse.BooleanOptionalAction, default=False)
     
     parser.add_argument("--wandb_sweep", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--early_stopping", action=argparse.BooleanOptionalAction)
     
     args = parser.parse_args()
     
