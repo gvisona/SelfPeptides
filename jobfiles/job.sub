@@ -5,8 +5,9 @@ output = joblogs/$(Process).out.txt
 log = joblogs/$(Process).log.txt
 request_memory = 128GB
 request_gpus=1
-requirements=TARGET.CUDACapability>=3.7
-requirements=TARGET.CUDAGlobalMemoryMb>25000
+# requirements=TARGET.CUDACapability>=3.7
+requirements = (TARGET.CUDACapability >= 6.0) && (TARGET.CUDACapability <= 7.0) && (TARGET.CUDAGlobalMemoryMb>10000) 
+# requirements=TARGET.CUDAGlobalMemoryMb>25000
 
 # MaxTime = 50000
 # periodic_hold = (JobStatus =?= 2) && ((CurrentTime - JobCurrentStartDate) >= $(MaxTime))
