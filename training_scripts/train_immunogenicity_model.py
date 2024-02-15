@@ -681,7 +681,7 @@ if __name__=="__main__":
     
     parser.add_argument("--LDS_kernel", type=str, default="triang")
     parser.add_argument("--LDS_ks", type=int, default=11)
-    parser.add_argument("--LDS_sigma", type=int, default=1.0)
+    parser.add_argument("--LDS_sigma", type=float, default=1.0)
     parser.add_argument("--loss_weights", type=str, default="LDS_weights")
     parser.add_argument("--constraints_weight", type=int, default=0.00)
     
