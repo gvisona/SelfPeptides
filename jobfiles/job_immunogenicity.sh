@@ -39,4 +39,4 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_immunogenicity_model.p
 --dhlap_df "/home/gvisona/SelfPeptides/processed_data/Immunogenicity/DHLAP_immunogenicity_data.csv" \
 --binding_model_config "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-3/config.json" \
 --binding_model_checkpoint "/home/gvisona/SelfPeptides/trained_models/BindingModels/floral-sweep-3/checkpoints/001_checkpoint.pt" \
---force_restart True
+--force_restart
