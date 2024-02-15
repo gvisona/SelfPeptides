@@ -32,7 +32,6 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_immunogenicity_model.p
 --mlp_hidden_dim 2048 --mlp_num_layers 2 \
 --early_stopping --patience 2000 \
 --project_folder "/fast/gvisona/SelfPeptides" \
---init_checkpoint "/home/gvisona/SelfPeptides/trained_models/binding_model_OLD/checkpoint.pt" \
 --pseudo_seq_file "/home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv" \
 --hla_prot_seq_file "/home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_proteins_T5/hla_proteins_mapping.csv" \
 --immunogenicity_df "/home/gvisona/SelfPeptides/processed_data/Immunogenicity/Processed_TCell_IEDB_beta_summed.csv" \
