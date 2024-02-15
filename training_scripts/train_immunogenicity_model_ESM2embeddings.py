@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import json
+import sys
 import os
 from os.path import exists, join
 from scipy.stats import beta
@@ -19,6 +20,47 @@ from selfpeptide.utils.training_utils import eval_beta_metrics, eval_regression_
 from selfpeptide.utils.beta_distr_utils import *
 from selfpeptide.utils.model_utils import load_binding_model, load_sns_model
 from selfpeptide.model.immunogenicity_predictor import JointPeptidesNetwork_Beta_ESM2Embeddings
+
+
+class BetaDistance_with_Constraints(nn.Module):
+    def __init__(self, config={}, device="cpu", **kwargs):
+        super().__init__()
+        
+        self.chernoff_distance = BetaChernoffDistance(config=config, device=device, **kwargs)
+        self.use_posterior = config.get("use_posterior_mean", False)
+        self.constraints_weight = config.get("constraints_weight", 1.0)
+
+
+    def forward(self, predictions, target_alphas, target_betas):
+        beta_chernoff_loss, logs = self.chernoff_distance(predictions, target_alphas, target_betas)
+        
+        binding_score_logits = predictions[:, 0]
+        binding_scores = torch.sigmoid(binding_score_logits)
+
+        if self.use_posterior:
+            means = predictions[:,2]
+        else:
+            means = predictions[:,1]
+        precisions = predictions[:, 3]
+        
+        alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
+        # target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)
+        constraints_loss = torch.sum(torch.clamp(binding_scores.view(-1)-means.view(-1), min=0.0))
+        
+        
+
+        loss = beta_chernoff_loss + self.constraints_weight * constraints_loss
+        logs["loss"] = loss.item()
+        
+        logs["constraints_loss"] = constraints_loss.item()
+        logs["weighted_constraints_loss"] = self.constraints_weight * constraints_loss.item()
+        
+        return loss, logs
+    
+    
+
+
+
 
 def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
@@ -81,11 +123,23 @@ def train(config=None, init_wandb=True):
     wandb.run.summary["mean_class_threshold"] = optimal_mean_class_threshold
     wandb.run.summary["mode_class_threshold"] = optimal_mode_class_threshold
     
+    try_to_overfit = config.get("try_to_overfit", False)
+    
+    
     train_dset = BetaDistributionDataset_ESM2Embs(train_df, esm2_peptide_embeddings, peptide2idx, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     val_dset = BetaDistributionDataset_ESM2Embs(val_df, esm2_peptide_embeddings, peptide2idx, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     test_dset = BetaDistributionDataset_ESM2Embs(test_df, esm2_peptide_embeddings, peptide2idx, hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
     
-    train_loader = DataLoader(train_dset, batch_size=config['batch_size'], drop_last=True, shuffle=True)
+    
+    if try_to_overfit:
+        n_samples = config['batch_size'] * 5
+        train_dset = BetaDistributionDataset_ESM2Embs(train_df.iloc[:n_samples], 
+                                                      esm2_peptide_embeddings, peptide2idx, 
+                                                      hla_repr=["Allele Pseudo-sequence", "Allele Protein sequence"])
+        train_loader = DataLoader(train_dset, batch_size=config['batch_size'], drop_last=True, shuffle=False)
+
+    else:
+        train_loader = DataLoader(train_dset, batch_size=config['batch_size'], drop_last=True, shuffle=True)
     val_loader = DataLoader(val_dset, batch_size=config['batch_size'], drop_last=False, shuffle=False)
     test_loader = DataLoader(test_dset, batch_size=config['batch_size'], drop_last=False)
     
@@ -134,7 +188,8 @@ def train(config=None, init_wandb=True):
     bins = torch.tensor(bins).to(device)
     bin_weights = torch.tensor(bin_weights).to(device)
         
-    beta_loss = BetaChernoffDistance(config, device=device, bins=bins, bin_weights=bin_weights) 
+    # beta_loss = BetaChernoffDistance(config, device=device, bins=bins, bin_weights=bin_weights) 
+    beta_loss = BetaDistance_with_Constraints(config, device=device, bins=bins, bin_weights=bin_weights) 
     
     checkpoints_folder = os.path.join(output_folder, "checkpoints")
     os.makedirs(checkpoints_folder, exist_ok=True)
@@ -173,8 +228,11 @@ def train(config=None, init_wandb=True):
     checkpoint_label = checkpoint_fname.split(".")[0]
     
     
-    optimizer = torch.optim.SGD(model.immunogenicity_model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
-                                nesterov=config.get("nesterov_momentum", False),
+    # optimizer = torch.optim.SGD(model.immunogenicity_model.parameters(), lr=config['lr'], momentum=config.get("momentum", 0.9),
+    #                             nesterov=config.get("nesterov_momentum", False),
+    #                             weight_decay=config['weight_decay'])
+    
+    optimizer = torch.optim.AdamW(model.immunogenicity_model.parameters(), lr=config['lr'], 
                                 weight_decay=config['weight_decay'])
     
     if resume_checkpoint_path is None and config.get("init_checkpoint", None) is None:
@@ -192,11 +250,11 @@ def train(config=None, init_wandb=True):
     best_metric_iter = 0
     avg_train_logs = None
     n_iters_per_val_cycle = config["accumulate_batches"] * config["validate_every_n_updates"] 
-    
+    use_posterior_mean = config.get("use_posterior_mean", False)
     # wandb.watch(model, log='gradients', log_freq=config["validate_every_n_updates"])
     
     pbar = tqdm(total=config["max_updates"])
-    if resume_config is None:
+    if resume_config is None or config["force_restart"]:
         n_update = -1
         n_iter = 0
     else:
@@ -204,7 +262,6 @@ def train(config=None, init_wandb=True):
         n_iter = resume_config["n_iter"]
         max_iters += n_iter   
         
-    apply_fds_smoothing = False
     early_stopping = False
     while n_iter < max_iters:
         for batch_ix, train_batch in enumerate(train_loader):
@@ -243,7 +300,7 @@ def train(config=None, init_wandb=True):
                     perform_validation = True
                 
                 
-            if perform_validation:
+            if perform_validation and not try_to_overfit:
                 perform_validation = False
                 model.immunogenicity_model.eval()
                 
@@ -260,14 +317,7 @@ def train(config=None, init_wandb=True):
                     imm_target = imm_target.float().to(device)
                     pep_embs = pep_embs.float().to(device)
                     
-                    target_labels = None
-                    if apply_fds_smoothing:
-                        target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(imm_alpha, imm_beta)
-                        target_labels = torch.bucketize(target_means, bins, right=True) - 1
-                    
-                        predictions, imm_joint_embs = model(peptides, hla_pseudoseqs, hla_prots, pep_embs, target_labels=target_labels)
-                    else:
-                        predictions = model(peptides, hla_pseudoseqs, hla_prots, pep_embs, target_labels=target_labels)
+                    predictions = model(peptides, hla_pseudoseqs, hla_prots, pep_embs)
 
                     loss, val_loss_logs = beta_loss(predictions, imm_alpha, imm_beta)
                     val_loss_logs = {"val/"+str(k): v for k, v in val_loss_logs.items()}
@@ -278,15 +328,18 @@ def train(config=None, init_wandb=True):
                         for k in val_loss_logs:
                             avg_val_logs[k] += val_loss_logs[k]
                     
-
-                    pred_posterior_means = predictions[:,1]                    
+                    if use_posterior_mean:
+                        pred_means = predictions[:,2]         
+                    else:
+                        pred_means = predictions[:,1]        
+                                   
                     pred_precisions = predictions[:,3]
                     
                         
-                    pred_posterior_means = pred_posterior_means.detach().cpu().tolist()
-                    if not isinstance(pred_posterior_means, list):
-                        pred_posterior_means = [pred_posterior_means]
-                    val_pred_means.extend(pred_posterior_means)        
+                    pred_means = pred_means.detach().cpu().tolist()
+                    if not isinstance(pred_means, list):
+                        pred_means = [pred_means]
+                    val_pred_means.extend(pred_means)        
                     
                     pred_precisions = pred_precisions.detach().cpu().tolist()
                     if not isinstance(pred_precisions, list):
@@ -351,6 +404,8 @@ def train(config=None, init_wandb=True):
                 log_results = True
                 model.immunogenicity_model.train()
             
+            if try_to_overfit and n_iter % n_iters_per_val_cycle==0:
+                log_results = True
             
             if log_results:
                 log_results = False
@@ -359,73 +414,44 @@ def train(config=None, init_wandb=True):
                 
                 current_lr = scheduler.get_last_lr()[0]
                 logs = {"learning_rate": current_lr, 
-                        "accumulated_batch": n_update,
-                        "FDS Smoothing": int(apply_fds_smoothing)}
+                        "accumulated_batch": n_update}
                 
                 logs.update(avg_train_logs)
-                logs.update(avg_val_logs)
-                # logs.update(val_regression_metrics)
-                logs.update(val_mean_classification_metrics)
-                logs.update(val_mode_classification_metrics)
-                logs.update(val_beta_metrics)
-                logs.update(val_regression_mean_metrics)
-                logs.update(val_regression_mode_metrics)
-                
-                logs.update(val_regression_mean_metrics_low)
-                logs.update(val_regression_mean_metrics_high)
-                logs.update(val_regression_mode_metrics_low)
-                logs.update(val_regression_mode_metrics_high)
+                if not try_to_overfit:
+                    logs.update(avg_val_logs)
+                    # logs.update(val_regression_metrics)
+                    logs.update(val_mean_classification_metrics)
+                    logs.update(val_mode_classification_metrics)
+                    logs.update(val_beta_metrics)
+                    logs.update(val_regression_mean_metrics)
+                    logs.update(val_regression_mode_metrics)
+                    
+                    logs.update(val_regression_mean_metrics_low)
+                    logs.update(val_regression_mean_metrics_high)
+                    logs.update(val_regression_mode_metrics_low)
+                    logs.update(val_regression_mode_metrics_high)
                 
                 
                 wandb.log(logs)      
                 avg_train_logs = None
                 
-            if config.get("early_stopping", False):
+            if config.get("early_stopping", False) and not try_to_overfit:
                 if (n_iter - best_metric_iter)/n_iters_per_val_cycle>config['patience']:
                     print("Val loss not improving, stopping training..\n\n")
                     early_stopping = True
                     break
                 
-            # break #TODO REMOVE
             
         if early_stopping:
             break
                 
-        # Update FDS statistics
-        model.eval()
-        encodings, labels = [], []
-        with torch.no_grad():
-            for batch_ix, train_batch in enumerate(train_loader):
-                peptides, hla_pseudoseqs, hla_prots = train_batch[0][:3]
-                imm_alpha, imm_beta, imm_target = train_batch[0][3:]
-                pep_embs = train_batch[1]
-                                
-                imm_alpha = imm_alpha.float().to(device)
-                imm_beta = imm_beta.float().to(device)
-                imm_target = imm_target.float().to(device)
-                pep_embs = pep_embs.float().to(device)
-                
-                target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(imm_alpha, imm_beta)
-                target_labels = torch.bucketize(target_means, bins, right=True) - 1
-                predictions, embeddings = model(peptides, hla_pseudoseqs, hla_prots, pep_embs, target_labels=target_labels)
-
-                encodings.append(embeddings.detach())
-                labels.append(target_labels.detach())
-                
-                # if batch_ix>10:
-                #     break
-        model.train()
-        encodings = torch.vstack(encodings)
-        labels = torch.hstack(labels)
-        
-        model.immunogenicity_model.fds.update_smoothed_stats()
-        model.immunogenicity_model.fds.update_running_stats(encodings, labels)
-        if not apply_fds_smoothing:
-            print("Applying FDS smoothing")
-            apply_fds_smoothing = True
 
 
     pbar.close()
+    
+    if try_to_overfit:
+        print("Overfitting training complete!")
+        sys.exit(0)
 
     print(f"\nLoading state dict from {checkpoint_path}\n\n")
     model.load_state_dict(torch.load(checkpoint_path))
@@ -447,14 +473,18 @@ def train(config=None, init_wandb=True):
         pep_embs = pep_embs.float().to(device)
         
         predictions = model(peptides, hla_pseudoseqs, hla_prots, pep_embs)
-
-        pred_posterior_means = predictions[:,1] # Select posterior mean       ## TODO DECIDE IF POSTERIOR OR NOT        
+                    
+        if use_posterior_mean:
+            pred_means = predictions[:,2]         
+        else:
+            pred_means = predictions[:,1]        
+                            
         pred_precisions = predictions[:,3]
         
-        pred_posterior_means = pred_posterior_means.detach().cpu().tolist()
-        if not isinstance(pred_posterior_means, list):
-            pred_posterior_means = [pred_posterior_means]
-        test_pred_means.extend(pred_posterior_means)
+        pred_means = pred_means.detach().cpu().tolist()
+        if not isinstance(pred_means, list):
+            pred_means = [pred_means]
+        test_pred_means.extend(pred_means)
         
         pred_precisions = pred_precisions.detach().cpu().tolist()
         if not isinstance(pred_precisions, list):
@@ -530,13 +560,16 @@ def train(config=None, init_wandb=True):
     #     peptides, hla_pseudoseqs, hla_prots = test_batch[:3]
     #     predictions = model(peptides, hla_pseudoseqs, hla_prots)
         
-    #     pred_posterior_means = predictions[:,2]
+    # if use_posterior_mean:
+    #     pred_means = predictions[:,2]         
+    # else:
+    #     pred_means = predictions[:,1]        
     #     pred_precisions = predictions[:,3]
         
-    #     pred_posterior_means = pred_posterior_means.detach().cpu().tolist()
-    #     if not isinstance(pred_posterior_means, list):
-    #         pred_posterior_means = [pred_posterior_means]
-    #     test_pred_means.extend(pred_posterior_means)
+    #     pred_means = pred_means.detach().cpu().tolist()
+    #     if not isinstance(pred_means, list):
+    #         pred_means = [pred_means]
+    #     test_pred_means.extend(pred_means)
         
     #     pred_precisions = pred_precisions.detach().cpu().tolist()
     #     if not isinstance(pred_precisions, list):
@@ -601,7 +634,7 @@ if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--run_number", type=int)
-    parser.add_argument("--experiment_name", type=str, default="devel")
+    parser.add_argument("--experiment_name", type=str, default="ESM2_overfitting")
     parser.add_argument("--experiment_group", type=str, default="Beta_regs_js")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
     parser.add_argument("--init_checkpoint", default=None)
@@ -632,15 +665,15 @@ if __name__=="__main__":
     # parser.add_argument("--embedding_dim", type=int, default=512)
     parser.add_argument("--mlp_input_dim", type=int, default=480)
     parser.add_argument("--mlp_hidden_dim", type=int, default=2048)
-    parser.add_argument("--mlp_num_layers", type=int, default=2)
+    parser.add_argument("--mlp_num_layers", type=int, default=4)
     parser.add_argument("--mlp_output_dim", type=int, default=512)
     parser.add_argument("--imm_regression_hidden_dim", type=int, default=2048)
 
 
 
-    parser.add_argument("--max_updates", type=int, default=10)
+    parser.add_argument("--max_updates", type=int, default=2000)
     parser.add_argument("--patience", type=int, default=1000)
-    parser.add_argument("--validate_every_n_updates", type=int, default=1)
+    parser.add_argument("--validate_every_n_updates", type=int, default=5)
     
     
     parser.add_argument("--test_size", type=float, default=0.15)
@@ -659,17 +692,11 @@ if __name__=="__main__":
     parser.add_argument("--LDS_ks", type=int, default=11)
     parser.add_argument("--LDS_sigma", type=int, default=1.0)
     parser.add_argument("--loss_weights", type=str, default="LDS_weights")
-    
-    parser.add_argument("--use_FDS", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--fds_start_bin", type=int, default=0)
-    parser.add_argument("--fds_kernel", type=str, default='gaussian')
-    parser.add_argument("--fds_ks", type=int, default=11)
-    parser.add_argument("--fds_sigma", type=float, default=2.0)
-    parser.add_argument("--fds_momentum", type=float, default=0.9)
-    
+    parser.add_argument("--constraints_weight", type=int, default=0.0000)
+
     
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.00001)
+    parser.add_argument("--weight_decay", type=float, default=0.0001)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--nesterov_momentum", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--min_frac", type=float, default=0.1)
@@ -677,6 +704,7 @@ if __name__=="__main__":
     parser.add_argument("--cool_down", type=float, default=0.8)
 
     parser.add_argument("--use_posterior_mean", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--try_to_overfit", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--wandb_sweep", action=argparse.BooleanOptionalAction)
     
     args = parser.parse_args()

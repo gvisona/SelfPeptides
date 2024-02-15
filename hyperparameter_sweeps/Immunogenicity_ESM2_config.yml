@@ -91,24 +91,3 @@ parameters:
     value: 1.5
   loss_weights:
     value: "LDS_weights"
-  use_FDS:
-    value: True
-  fds_start_bin:
-    value: 0
-  fds_kernel:
-    value: "gaussian"
-  fds_ks:
-    values:
-    - 11
-    - 15
-    - 7
-    - 21
-  fds_sigma:
-    values:
-    - 1.0
-    - 2.0
-    - 4.0
-  fds_momentum:
-    value: 0.9
-  
-  

@@ -45,7 +45,8 @@ def get_LDS_loss_weights(target_labels, n_bins, kernel, ks, sigma):
     lds_kernel_window = get_lds_kernel_window(kernel=kernel, ks=ks, sigma=sigma)
     eff_label_dist = convolve1d(np.array(emp_label_dist), weights=lds_kernel_window, mode='constant')
     weight_per_bin = np.array([np.float32(1 / x) for x in eff_label_dist])
-    weight_per_bin = weight_per_bin/np.max(weight_per_bin)
+    # weight_per_bin = weight_per_bin/np.max(weight_per_bin)
+    weight_per_bin = n_bins * weight_per_bin/np.sum(weight_per_bin) 
     return bins, weight_per_bin, emp_label_dist, eff_label_dist
 
 
@@ -511,9 +512,165 @@ class BetaChernoffDistance(nn.Module):
             idxs = torch.bucketize(target_means, self.bins, right=True) - 1
             weights = torch.take(self.bin_weights, idxs)
             
-        logs["unweighted_loss"] =  torch.mean(loss).item()
+        logs["unweighted_chernoff_loss"] =  torch.mean(loss).item()
         loss = torch.mean(loss * weights)
- 
+        logs["chernoff_loss"] =  loss.item()
+
+        logs["loss"] =  loss.item()
+        return loss, logs
+    
+    
+
+class BetaChernoffDistance_OptimizePrecision(nn.Module):
+    def __init__(self, config={}, device="cpu", **kwargs):
+        super().__init__()
+        self.device = device
+        self.lbd = config.get("chernoff_lambda", 0.5)
+        self.use_posterior = config.get("use_posterior_mean", False)
+        self.loss_weights = config.get("loss_weights", "uniform")
+        
+        if "bins" in kwargs:
+            if not torch.is_tensor(kwargs["bins"]):
+                self.bins = torch.tensor(kwargs["bins"]).to(device)
+            else:
+                self.bins = (kwargs["bins"]).to(device)
+                
+            if not torch.is_tensor(kwargs["bin_weights"]):
+                self.bin_weights = torch.tensor(kwargs["bin_weights"]).to(device)
+            else:
+                self.bin_weights = (kwargs["bin_weights"]).to(device)
+                
+        assert self.lbd>0 and self.lbd<1, "Select a valid lambda parameter"
+
+    def forward(self, predictions, target_alphas, target_betas):
+        logs = {}
+        if self.use_posterior:
+            means = predictions[:,2]
+        else:
+            means = predictions[:,1]
+        means = means.detach()
+        precisions = predictions[:, 3]
+        
+        alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
+        target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)
+        
+        loss = beta_chernoff_distance(target_alphas, target_betas, alphas, betas, lbd=self.lbd)
+        
+        if self.loss_weights == "uniform":
+            weights = torch.ones_like(loss).to(self.device)
+        elif self.loss_weights == "LDS_weights":
+            idxs = torch.bucketize(target_means, self.bins, right=True) - 1
+            weights = torch.take(self.bin_weights, idxs)
+            
+        logs["unweighted_chernoff_loss"] =  torch.mean(loss).item()
+        loss = torch.mean(loss * weights)
+        logs["chernoff_loss"] =  loss.item()
+
+        logs["loss"] =  loss.item()
+        return loss, logs
+    
+
+
+    
+class BetaKLDivergence_OptimizePrecision(nn.Module):
+    def __init__(self, config={}, device="cpu", **kwargs):
+        super().__init__()
+        self.device = device
+        self.use_posterior = config.get("use_posterior_mean", False)
+        self.loss_weights = config.get("loss_weights", "uniform")
+        self.kl_loss_type = config.get("kl_loss_type", "forward")
+        
+        if "bins" in kwargs:
+            if not torch.is_tensor(kwargs["bins"]):
+                self.bins = torch.tensor(kwargs["bins"]).to(device)
+            else:
+                self.bins = (kwargs["bins"]).to(device)
+                
+            if not torch.is_tensor(kwargs["bin_weights"]):
+                self.bin_weights = torch.tensor(kwargs["bin_weights"]).to(device)
+            else:
+                self.bin_weights = (kwargs["bin_weights"]).to(device)
+                
+        # assert self.lbd>0 and self.lbd<1, "Select a valid lambda parameter"
+
+    def forward(self, predictions, target_alphas, target_betas):
+        logs = {}
+        if self.use_posterior:
+            means = predictions[:,2]
+        else:
+            means = predictions[:,1]
+        means = means.detach()
+        precisions = predictions[:, 3]
+        
+        alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
+        target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)
+        
+        kl_loss = 0
+        if self.kl_loss_type == "forward" or self.kl_loss_type=="both":
+            kl_loss += beta_kl_divergence(alphas, betas, target_alphas, target_betas)
+        if self.kl_loss_type == "backward" or self.kl_loss_type=="both":
+            kl_loss += beta_kl_divergence(target_alphas, target_betas, alphas, betas)
+        if self.kl_loss_type=="both":
+            kl_loss /= 2
+        
+        if self.loss_weights == "uniform":
+            weights = torch.ones_like(kl_loss).to(self.device)
+        elif self.loss_weights == "LDS_weights":
+            idxs = torch.bucketize(target_means, self.bins, right=True) - 1
+            weights = torch.take(self.bin_weights, idxs)
+            
+        logs["unweighted_KL_loss"] =  torch.mean(kl_loss).item()
+        
+        kl_loss = torch.mean(kl_loss * weights)
+        
+        logs["weighted_KL_loss"] =  kl_loss.item()
+
+        logs["loss"] =  kl_loss.item()
+        return kl_loss, logs
+    
+class DIR_Weighted_RegressionLoss(nn.Module):
+    def __init__(self, config={}, device="cpu", **kwargs):
+        super().__init__()
+        self.device = device
+        self.use_posterior = config.get("use_posterior_mean", False)
+        self.loss_weights = config.get("loss_weights", "uniform")
+        self.regression_loss = nn.MSELoss(reduction="none")
+        
+        if "bins" in kwargs:
+            if not torch.is_tensor(kwargs["bins"]):
+                self.bins = torch.tensor(kwargs["bins"]).to(device)
+            else:
+                self.bins = (kwargs["bins"]).to(device)
+                
+            if not torch.is_tensor(kwargs["bin_weights"]):
+                self.bin_weights = torch.tensor(kwargs["bin_weights"]).to(device)
+            else:
+                self.bin_weights = (kwargs["bin_weights"]).to(device)
+                
+
+    def forward(self, predictions, target_alphas, target_betas):
+        logs = {}
+        if self.use_posterior:
+            means = predictions[:,2]
+        else:
+            means = predictions[:,1]
+        precisions = predictions[:, 3]
+        
+        alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
+        target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)
+        
+        loss = self.regression_loss(means, target_means)
+        
+        if self.loss_weights == "uniform":
+            weights = torch.ones_like(loss).to(self.device)
+        elif self.loss_weights == "LDS_weights":
+            idxs = torch.bucketize(target_means, self.bins, right=True) - 1
+            weights = torch.take(self.bin_weights, idxs)
+            
+        logs["unweighted_regression_loss"] =  torch.mean(loss).item()
+        loss = torch.mean(loss * weights)
+        logs["weighted_regression_loss"] =  loss.item()
+
         logs["loss"] =  loss.item()
         return loss, logs
     
