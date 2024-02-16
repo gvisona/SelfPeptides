@@ -631,7 +631,7 @@ def train(config=None, init_wandb=True):
 if __name__=="__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--run_number", type=int)
+    parser.add_argument("--run_number", type=str)
     parser.add_argument("--experiment_name", type=str, default="BetaRegr_Overfitting")
     parser.add_argument("--experiment_group", type=str, default="Beta_regs_js")
     parser.add_argument("--project_folder", type=str, default="/home/gvisona/Projects/SelfPeptides")
