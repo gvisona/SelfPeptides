@@ -246,7 +246,7 @@ def train(config=None, init_wandb=True):
     log_results = False     
     
     use_posterior_mean = config.get("use_posterior_mean", False)
-    best_val_metric = np.inf
+    best_val_metric = -1 * np.inf
     best_metric_iter = 0
     avg_train_logs = None
     n_iters_per_val_cycle = config["accumulate_batches"] * config["validate_every_n_updates"] 
@@ -387,8 +387,9 @@ def train(config=None, init_wandb=True):
                     avg_val_logs[k] /= len(val_loader)
                     
                     
-                epoch_val_metric = avg_val_logs["val/loss"] 
-                if epoch_val_metric<best_val_metric:
+                # epoch_val_metric = avg_val_logs["val/loss"] 
+                epoch_val_metric = val_regression_mean_metrics["val_mean_regr/PearsonR"] 
+                if epoch_val_metric>best_val_metric:
                     best_val_metric = epoch_val_metric
                     best_metric_iter = n_iter
                     torch.save(model.state_dict(), checkpoint_path)

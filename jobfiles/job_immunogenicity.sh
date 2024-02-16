@@ -15,7 +15,7 @@ module load cuda/11.7
 # wd=0.0001
 
 python3 /home/gvisona/SelfPeptides/training_scripts/train_immunogenicity_model.py  \
---seed 42 --run_number 0 \
+--seed 42 --run_number "SavingBestPearsonR" \
 --experiment_group "BetaRegression_MeanRegression" --experiment_name "BetaRegr_Exploration" \
 --kl_loss_type "forward" \
 --accumulate_batches 4 --batch_size 32 \
