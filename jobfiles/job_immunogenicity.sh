@@ -29,7 +29,7 @@ python3 /home/gvisona/SelfPeptides/training_scripts/train_immunogenicity_model.p
 --loss_weights "LDS_weights" --constraints_weight 0.01 \
 --imm_regression_hidden_dim 2048 \
 --mlp_input_dim 1025 --mlp_output_dim 512 \
---mlp_hidden_dim 2048 --mlp_num_layers 2 \
+--mlp_hidden_dim 4096 --mlp_num_layers 3 \
 --early_stopping --patience 200000 \
 --project_folder "/fast/gvisona/SelfPeptides" \
 --pseudo_seq_file "/home/gvisona/SelfPeptides/processed_data/HLA_embeddings/HLA_pseudoseqs_T5/hla_pseudoseq_mapping.csv" \

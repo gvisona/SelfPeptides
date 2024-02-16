@@ -391,10 +391,10 @@ def train(config=None, init_wandb=True):
                 if epoch_val_metric<best_val_metric:
                     best_val_metric = epoch_val_metric
                     best_metric_iter = n_iter
-                    # torch.save(model.state_dict(), checkpoint_path)
-                    # resume_config = {"n_iter": n_iter, "n_update": n_update}
-                    # with open(os.path.join(checkpoints_folder, checkpoint_label+".json"), "w") as f:
-                    #     json.dump(resume_config, f, indent=2)
+                    torch.save(model.state_dict(), checkpoint_path)
+                    resume_config = {"n_iter": n_iter, "n_update": n_update}
+                    with open(os.path.join(checkpoints_folder, checkpoint_label+".json"), "w") as f:
+                        json.dump(resume_config, f, indent=2)
 
                     
                 log_results = True
@@ -446,100 +446,100 @@ def train(config=None, init_wandb=True):
 
     pbar.close()
     
-    # if try_to_overfit:
-    #     print("Overfitting training complete!")
-    #     sys.exit(0)
+    if try_to_overfit:
+        print("Overfitting training complete!")
+        sys.exit(0)
 
-    # print(f"\nLoading state dict from {checkpoint_path}\n\n")
-    # model.load_state_dict(torch.load(checkpoint_path))
-    # model.immunogenicity_model.eval()
+    print(f"\nLoading state dict from {checkpoint_path}\n\n")
+    model.load_state_dict(torch.load(checkpoint_path))
+    model.immunogenicity_model.eval()
     
     
-    # print("Testing model..")
-    # test_pred_means = []
-    # test_pred_precisions = []
-    # for ix, test_batch in tqdm(enumerate(test_loader)):
-    #     peptides, hla_pseudoseqs, hla_prots = test_batch[:3]
-    #     imm_alpha, imm_beta, imm_target = test_batch[3:]
+    print("Testing model..")
+    test_pred_means = []
+    test_pred_precisions = []
+    for ix, test_batch in tqdm(enumerate(test_loader)):
+        peptides, hla_pseudoseqs, hla_prots = test_batch[:3]
+        imm_alpha, imm_beta, imm_target = test_batch[3:]
 
-    #     imm_alpha = imm_alpha.float().to(device)
-    #     imm_beta = imm_beta.float().to(device)
-    #     imm_target = imm_target.float().to(device)
+        imm_alpha = imm_alpha.float().to(device)
+        imm_beta = imm_beta.float().to(device)
+        imm_target = imm_target.float().to(device)
         
-    #     predictions = model(peptides, hla_pseudoseqs, hla_prots)
-    #     if use_posterior_mean:
-    #         pred_means = predictions[:,2]         
-    #     else:
-    #         pred_means = predictions[:,1]          
+        predictions = model(peptides, hla_pseudoseqs, hla_prots)
+        if use_posterior_mean:
+            pred_means = predictions[:,2]         
+        else:
+            pred_means = predictions[:,1]          
                       
-    #     pred_precisions = predictions[:,3]
+        pred_precisions = predictions[:,3]
         
-    #     pred_means = pred_means.detach().cpu().tolist()
-    #     if not isinstance(pred_means, list):
-    #         pred_means = [pred_means]
-    #     test_pred_means.extend(pred_means)
+        pred_means = pred_means.detach().cpu().tolist()
+        if not isinstance(pred_means, list):
+            pred_means = [pred_means]
+        test_pred_means.extend(pred_means)
         
-    #     pred_precisions = pred_precisions.detach().cpu().tolist()
-    #     if not isinstance(pred_precisions, list):
-    #         pred_precisions = [pred_precisions]
-    #     test_pred_precisions.extend(pred_precisions)
+        pred_precisions = pred_precisions.detach().cpu().tolist()
+        if not isinstance(pred_precisions, list):
+            pred_precisions = [pred_precisions]
+        test_pred_precisions.extend(pred_precisions)
         
         
-    # test_pred_means.extend([np.nan]*(len(test_df)-len(test_pred_means)))
-    # test_pred_precisions.extend([np.nan]*(len(test_df)-len(test_pred_precisions)))
-    # test_df = test_df.dropna()
+    test_pred_means.extend([np.nan]*(len(test_df)-len(test_pred_means)))
+    test_pred_precisions.extend([np.nan]*(len(test_df)-len(test_pred_precisions)))
+    test_df = test_df.dropna()
     
-    # test_pred_alphas, test_pred_betas, test_pred_vars, test_pred_modes = beta_distr_params_from_mean_precision(test_pred_means, test_pred_precisions)
+    test_pred_alphas, test_pred_betas, test_pred_vars, test_pred_modes = beta_distr_params_from_mean_precision(test_pred_means, test_pred_precisions)
 
-    # test_df["Prediction Distr. Mean"] = test_pred_means
-    # test_df["Prediction Distr. Precision"] = test_pred_precisions
+    test_df["Prediction Distr. Mean"] = test_pred_means
+    test_df["Prediction Distr. Precision"] = test_pred_precisions
     
-    # test_df.to_csv(join(results_folder, f"test_predictions_{run_name}.csv"), index=False)
+    test_df.to_csv(join(results_folder, f"test_predictions_{run_name}.csv"), index=False)
 
-    # class_targets = test_df["Target"].values
-    # test_mean_classification_metrics = eval_classification_metrics(class_targets, test_pred_means, 
-    #                                         is_logit=False, threshold=optimal_mean_class_threshold)
-    # test_mean_classification_metrics = {"test_IEDB_mean_class/"+k: v for k, v in test_mean_classification_metrics.items()}
+    class_targets = test_df["Target"].values
+    test_mean_classification_metrics = eval_classification_metrics(class_targets, test_pred_means, 
+                                            is_logit=False, threshold=optimal_mean_class_threshold)
+    test_mean_classification_metrics = {"test_IEDB_mean_class/"+k: v for k, v in test_mean_classification_metrics.items()}
     
-    # test_mode_classification_metrics = eval_classification_metrics(class_targets, test_pred_modes, 
-    #                                         is_logit=False, threshold=optimal_mode_class_threshold)
-    # test_mode_classification_metrics = {"test_IEDB_mode_class/"+k: v for k, v in test_mode_classification_metrics.items()}
+    test_mode_classification_metrics = eval_classification_metrics(class_targets, test_pred_modes, 
+                                            is_logit=False, threshold=optimal_mode_class_threshold)
+    test_mode_classification_metrics = {"test_IEDB_mode_class/"+k: v for k, v in test_mode_classification_metrics.items()}
     
-    # regression_mean_targets = test_df["Distr. Mean"].values
-    # test_regression_mean_metrics = eval_regression_metrics(regression_mean_targets, test_pred_means)
-    # test_regression_mean_metrics = {"test_IEDB_mean_regr/"+k: v for k, v in test_regression_mean_metrics.items()}
+    regression_mean_targets = test_df["Distr. Mean"].values
+    test_regression_mean_metrics = eval_regression_metrics(regression_mean_targets, test_pred_means)
+    test_regression_mean_metrics = {"test_IEDB_mean_regr/"+k: v for k, v in test_regression_mean_metrics.items()}
     
-    # regression_mode_targets = test_df["Distr. Mode"].values
-    # test_regression_mode_metrics = eval_regression_metrics(regression_mode_targets, test_pred_modes)
-    # test_regression_mode_metrics = {"test_IEDB_mode_regr/"+k: v for k, v in test_regression_mode_metrics.items()}
+    regression_mode_targets = test_df["Distr. Mode"].values
+    test_regression_mode_metrics = eval_regression_metrics(regression_mode_targets, test_pred_modes)
+    test_regression_mode_metrics = {"test_IEDB_mode_regr/"+k: v for k, v in test_regression_mode_metrics.items()}
     
-    # target_means = test_df["Distr. Mean"].values
-    # target_precisions = test_df["Distr. Precision"].values
-    # test_beta_metrics = eval_beta_metrics(target_means, target_precisions, test_pred_means, test_pred_precisions)
-    # test_beta_metrics = {"test_IEDB_beta/"+k: v for k, v in test_beta_metrics.items()}
+    target_means = test_df["Distr. Mean"].values
+    target_precisions = test_df["Distr. Precision"].values
+    test_beta_metrics = eval_beta_metrics(target_means, target_precisions, test_pred_means, test_pred_precisions)
+    test_beta_metrics = {"test_IEDB_beta/"+k: v for k, v in test_beta_metrics.items()}
                 
     
-    # for k, v in test_mean_classification_metrics.items():
-    #     wandb.run.summary[k] = v
-    # for k, v in test_mode_classification_metrics.items():
-    #     wandb.run.summary[k] = v
-    # for k, v in test_regression_mean_metrics.items():
-    #     wandb.run.summary[k] = v
-    # for k, v in test_regression_mode_metrics.items():
-    #     wandb.run.summary[k] = v
+    for k, v in test_mean_classification_metrics.items():
+        wandb.run.summary[k] = v
+    for k, v in test_mode_classification_metrics.items():
+        wandb.run.summary[k] = v
+    for k, v in test_regression_mean_metrics.items():
+        wandb.run.summary[k] = v
+    for k, v in test_regression_mode_metrics.items():
+        wandb.run.summary[k] = v
     
-    # predicted_mean_classes = (test_df["Prediction Distr. Mean"]>optimal_mean_class_threshold).astype(int).values
-    # wandb.log({"test_mean_conf_mat" : wandb.plot.confusion_matrix(probs=None,
-    #                     y_true=class_targets, preds=predicted_mean_classes,
-    #                     class_names=["IEDB Mean Negative", "IEDB Mean Positive"])})
+    predicted_mean_classes = (test_df["Prediction Distr. Mean"]>optimal_mean_class_threshold).astype(int).values
+    wandb.log({"test_mean_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=class_targets, preds=predicted_mean_classes,
+                        class_names=["IEDB Mean Negative", "IEDB Mean Positive"])})
     
-    # predicted_mode_classes = (test_pred_modes>optimal_mode_class_threshold).astype(int)
-    # wandb.log({"test_mode_conf_mat" : wandb.plot.confusion_matrix(probs=None,
-    #                     y_true=class_targets, preds=predicted_mode_classes,
-    #                     class_names=["IEDB Mode Negative", "IEDB Mode Positive"])})
+    predicted_mode_classes = (test_pred_modes>optimal_mode_class_threshold).astype(int)
+    wandb.log({"test_mode_conf_mat" : wandb.plot.confusion_matrix(probs=None,
+                        y_true=class_targets, preds=predicted_mode_classes,
+                        class_names=["IEDB Mode Negative", "IEDB Mode Positive"])})
     
-    # # with open(join(results_folder, f"test_metrics_{run_name}.json"), "w") as f:
-    # #     json.dump(test_metrics, f)
+    # with open(join(results_folder, f"test_metrics_{run_name}.json"), "w") as f:
+    #     json.dump(test_metrics, f)
                     
         
         
