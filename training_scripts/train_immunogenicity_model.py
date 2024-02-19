@@ -66,7 +66,8 @@ class BetaDistance_with_Constraints(nn.Module):
         logs["weighted_constraints_loss"] = self.constraints_weight * constraints_loss.item()
         
         logs["beta_mean_mAE"] = torch.mean(torch.abs(means-target_means))
-        logs["beta_precisions_mAE"] = torch.mean(torch.abs(precisions-target_precisions))
+        logs["beta_precisions_mAE"] = torch.mean(torch.abs(torch.sinh(precisions)-target_precisions))
+        logs["beta_precisions_arcsinh_mAE"] = torch.mean(torch.abs(precisions-torch.arcsinh(target_precisions)))
         
         return loss, logs
     

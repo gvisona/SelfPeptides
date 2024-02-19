@@ -549,7 +549,7 @@ class BetaChernoffDistance_OptimizePrecision(nn.Module):
         else:
             means = predictions[:,1]
         means = means.detach()
-        precisions = predictions[:, 3]
+        precisions = torch.sinh(predictions[:, 3]) # TODO REMOVE SINH IF NOT TRANSFORMED
         
         alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
         target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)
@@ -600,7 +600,7 @@ class BetaKLDivergence_OptimizePrecision(nn.Module):
         else:
             means = predictions[:,1]
         means = means.detach()
-        precisions = predictions[:, 3]
+        precisions = torch.sinh(predictions[:, 3])  # TODO REMOVE SINH IF NOT TRANSFORMED
         
         alphas, betas, variances, modes = beta_distr_params_from_mean_precision(means, precisions)
         target_means, target_precisions, target_variances, target_modes = beta_distr_params_from_alpha_beta(target_alphas, target_betas)

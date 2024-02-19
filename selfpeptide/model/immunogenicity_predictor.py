@@ -316,6 +316,8 @@ class ImmunogenicityBetaModel(nn.Module):
         self.peptide_ln = nn.LayerNorm(512)
         self.hla_ln = nn.LayerNorm(512)
         
+        self.sp = nn.Softplus()
+        
         
 
     def forward(self, binding_score_logit, binding_peptides_embs, binding_hlas_embs, *args):
@@ -331,7 +333,7 @@ class ImmunogenicityBetaModel(nn.Module):
         output = self.output_module(joint_embs)
         means = self.epsilon + (1-2*self.epsilon) * torch.sigmoid(output[:, 0])
         posterior_means = binding_score * means
-        precisions = 2 + torch.exp(output[:, 1])
+        precisions = self.sp(output[:, 1]) # 2 + torch.exp(output[:, 1])
         
         return torch.hstack([means.view(-1,1), posterior_means.view(-1,1), precisions.view(-1,1)]), joint_embs
     
