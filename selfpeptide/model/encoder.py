@@ -4,59 +4,90 @@ import math
 import re
 from selfpeptide.model.components import *
 import warnings
+from typing import List, Tuple
+import torch
+import math
+import re
+from selfpeptide.model.components import *
+import warnings
+import torch.nn as nn
+
 
 class AA_Tokenizer(nn.Module):
-    def __init__(self, sorted_vocabulary, device="cpu", padding_token="*"):
+    def __init__(self, sorted_vocabulary: List[str], device: str = "cpu", padding_token: str = "*"):
+        """
+        Args:
+            sorted_vocabulary: A list of strings representing the sorted vocabulary of amino acids.
+            device: The device to use for computation (default is "cpu").
+            padding_token: The padding token to use for sequences (default is "*").
+        """
         super().__init__()
         self.device = device
         self.padding_token = padding_token
-        
-            
+
         self.sorted_vocabulary = sorted_vocabulary.copy()
         if padding_token not in sorted_vocabulary:
             self.sorted_vocabulary.append(padding_token)
-            
+
         self.idx2token = {i: a for i, a in enumerate(self.sorted_vocabulary)}
         self.token2idx = {a: i for i, a in self.idx2token.items()}
-        
-    def _pad_sequences(self, seqs):
+
+    def _pad_sequences(self, seqs: List[str]) -> List[str]:
+        """
+        Pad sequences with the padding token to have the same length.
+
+        Args:
+            seqs: A list of strings representing the sequences.
+
+        Returns:
+            A list of padded sequences.
+        """
         maxlen = max([len(s) for s in seqs])
         padded_seqs = []
         for s in seqs:
             npad = maxlen - len(s)
-            padded_seqs.append(s + ''.join([self.padding_token]*npad))
+            padded_seqs.append(s + ''.join([self.padding_token] * npad))
         return padded_seqs
-        
-    
-    def forward(self, seqs):
+
+    def forward(self, seqs: List[str]) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Convert sequences to tokenized tensors.
+
+        Args:
+            seqs: A list of strings representing the sequences.
+
+        Returns:
+            A tuple of tokenized amino acid IDs and attention masks.
+        """
         if isinstance(seqs, (list, tuple)):
-            seqs = ["".join(list(re.sub(r"[UZOB]", "X", sequence))) for sequence in seqs]    
+            seqs = ["".join(list(re.sub(r"[UZOB]", "X", sequence))) for sequence in seqs]
             seqs = self._pad_sequences(seqs)
             attention_mask = []
             aa_ids = []
             for s in seqs:
-                attention_mask.append([1 if aa==self.padding_token else 0 for aa in s]) # Mask is 1 for padding token, 0 otherwise
+                attention_mask.append([1 if aa == self.padding_token else 0 for aa in s])  # Mask is 1 for padding token, 0 otherwise
                 aa_ids.append([self.token2idx[aa] for aa in s])
             attention_mask = torch.tensor(attention_mask).to(self.device).bool()
-            aa_ids = torch.LongTensor(aa_ids).to(self.device) 
+            aa_ids = torch.LongTensor(aa_ids).to(self.device)
         elif torch.is_tensor(seqs):
             aa_ids = seqs.long().to(self.device)
-            attention_mask = (torch.eq(aa_ids, self.token2idx[self.padding_token])).to(self.device).bool() 
+            attention_mask = (torch.eq(aa_ids, self.token2idx[self.padding_token])).to(self.device).bool()
         else:
             raise ValueError("AA_Tokenizer requires strings of amino acids or pre-tokenized tensors")
-        
+
         return aa_ids, attention_mask
-    
-    
-    
 
 
 class TEncoderLayer(nn.Module):
-    def __init__(self, config, **kwargs):
+    def __init__(self, config: dict, **kwargs):
+        """
+        Args:
+            config: A dictionary containing the configuration parameters.
+        """
         super().__init__()
-        
+
         self.multihead_attention = nn.MultiheadAttention(config["embedding_dim"], config["num_heads"], batch_first=True)
-        
+
         self.dropout1 = nn.Dropout(config["dropout_p"])
         self.res_norm1 = ResNorm(config["embedding_dim"])
         self.feed_forward = nn.Sequential(nn.Linear(config["embedding_dim"], config["transf_hidden_dim"]),
@@ -64,10 +95,16 @@ class TEncoderLayer(nn.Module):
                                           nn.Linear(config["transf_hidden_dim"], config["embedding_dim"]))
         self.dropout2 = nn.Dropout(config["dropout_p"])
         self.res_norm2 = ResNorm(config["embedding_dim"])
-        
+
         self.feed_forward.apply(self._init_weights)
-        
-    def _init_weights(self, module):
+
+    def _init_weights(self, module: nn.Module):
+        """
+        Initialize the weights of the linear and layer normalization layers.
+
+        Args:
+            module: The module to initialize the weights for.
+        """
         if isinstance(module, nn.Linear):
             nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
             if module.bias is not None:
@@ -75,9 +112,19 @@ class TEncoderLayer(nn.Module):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.normal_(mean=0.0, std=0.01)
             module.weight.data.normal_(mean=1.0, std=0.01)
-    
-    def forward(self, X, padding_mask):
-        with warnings.catch_warnings(): # Pytorch MHA has an annoying warning on boolean masks that is bugged
+
+    def forward(self, X: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Perform a forward pass through the transformer encoder layer.
+
+        Args:
+            X: The input tensor of shape (batch_size, seq_len, embedding_dim).
+            padding_mask: The padding mask tensor of shape (batch_size, seq_len).
+
+        Returns:
+            The output tensor of shape (batch_size, seq_len, embedding_dim).
+        """
+        with warnings.catch_warnings():  # Pytorch MHA has an annoying warning on boolean masks that is bugged
             warnings.simplefilter("ignore")
             multihead_output, attn_weights = self.multihead_attention(X, X, X, key_padding_mask=padding_mask)
         multihead_output = self.dropout1(multihead_output)
@@ -88,10 +135,17 @@ class TEncoderLayer(nn.Module):
         feedforward_output = self.dropout2(feedforward_output)
 
         return self.res_norm2(resnorm_output, feedforward_output)
-        
+
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 200, device='cpu'):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 200, device: str = 'cpu'):
+        """
+        Args:
+            d_model: The dimension of the model.
+            dropout: The dropout rate (default is 0.1).
+            max_len: The maximum length of the input sequence (default is 200).
+            device: The device to use for computation (default is "cpu").
+        """
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -101,29 +155,48 @@ class PositionalEncoding(nn.Module):
         pe[0, :, 0::2] = torch.sin(position * div_term)
         pe[0, :, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
-        # self.pe = pe
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
+        Add positional encoding to the input tensor.
+
         Args:
-            x: Tensor, shape [batch_size, seq_len, embedding_dim]
+            x: The input tensor of shape [batch_size, seq_len, embedding_dim].
+
+        Returns:
+            The output tensor of shape [batch_size, seq_len, embedding_dim].
         """
-        x = x + self.pe[:,:x.size(1),:]
-        return self.dropout(x)        
-        
+        x = x + self.pe[:, :x.size(1), :]
+        return self.dropout(x)
+
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, config, device='cpu'):
+    def __init__(self, config: dict, device: str = 'cpu'):
+        """
+        Args:
+            config: A dictionary containing the configuration parameters.
+            device: The device to use for computation (default is "cpu").
+        """
         super().__init__()
         self.pos_encoding = PositionalEncoding(config["embedding_dim"], config["dropout_p"], max_len=100, device=device)
         self.dropout = nn.Dropout(config["dropout_p"])
         self.encoder_layers = nn.ModuleList([TEncoderLayer(config) for _ in range(config["n_attention_layers"])])
         self.device = device
-        
-    def forward(self, X, padding_mask=None):
+
+    def forward(self, X: torch.Tensor, padding_mask: torch.Tensor = None) -> torch.Tensor:
+        """
+        Perform a forward pass through the transformer encoder.
+
+        Args:
+            X: The input tensor of shape (batch_size, seq_len, embedding_dim).
+            padding_mask: The padding mask tensor of shape (batch_size, seq_len) (default is None).
+
+        Returns:
+            The output tensor of shape (batch_size, seq_len, embedding_dim).
+        """
         if padding_mask is None:
             padding_mask = torch.zeros_like(X).int().to(self.device)
-            
+
         X = self.pos_encoding(X)
         X = self.dropout(X)
 

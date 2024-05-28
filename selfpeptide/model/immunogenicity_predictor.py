@@ -64,6 +64,7 @@ import json
     
 
 class ImmunogenicityClassifier(nn.Module):
+    
     def __init__(self, config, device, epsilon=1e-3):
         super().__init__()
         self.config = config

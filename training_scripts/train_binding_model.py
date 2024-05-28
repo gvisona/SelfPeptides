@@ -20,20 +20,36 @@ from selfpeptide.utils.data_utils import SequencesInteractionDataset, load_bindi
 
 
 class WeightedBinding_Loss(nn.Module):
+    """
+    Weighted Binding Loss class.
+    
+    Args:
+        class_weights (list): List of class weights.
+        device (str): Device to use for computation.
+    """
     def __init__(self, class_weights=[1.0, 1.0], device="cpu"):
         super().__init__()
         self.device = device
         self.class_weights = torch.tensor(class_weights).to(device)
         self.bce_logits = nn.BCEWithLogitsLoss(reduction="none")
         
-        
     def forward(self, predictions, targets):
+        """
+        Forward pass of the Weighted Binding Loss.
+        
+        Args:
+            predictions (torch.Tensor): Predicted values.
+            targets (torch.Tensor): Target values.
+            
+        Returns:
+            torch.Tensor: Computed loss.
+        """
         weights = torch.gather(self.class_weights, 0, targets.long())
         loss = self.bce_logits(predictions.view(-1), targets)
         loss = torch.mean(loss * weights)
         return loss
-        
 class LS_CELoss(nn.Module):
+        
     def __init__(self, ls_alpha=0.1, class_weights=[1.0, 1.0], device="cpu"):
         super().__init__()
         self.ls_alpha = ls_alpha
@@ -41,15 +57,24 @@ class LS_CELoss(nn.Module):
         self.class_weights = torch.tensor(class_weights).to(device)
         
     def forward(self, predicted_pos_logits, class_targets):
+        """
+        Forward pass of the LS_CELoss module.
+        
+        Args:
+            predicted_pos_logits (torch.Tensor): Predicted positive logits.
+            class_targets (torch.Tensor): Class targets.
+        
+        Returns:
+            torch.Tensor: Loss value.
+        """
         expanded_logits = torch.vstack([-predicted_pos_logits.view(-1), predicted_pos_logits.view(-1)]).transpose(0, 1)
         targets_probs = torch.ones_like(expanded_logits)*self.ls_alpha/2
+
         targets_probs[torch.arange(len(targets_probs)), class_targets.view(-1).long()] += (1-self.ls_alpha)
         weights = torch.gather(self.class_weights, 0, class_targets.view(-1).long())
         loss = self.ce_loss(expanded_logits, targets_probs)
         loss = torch.mean(loss * weights)
         return loss
-
-        
 def train(config=None, init_wandb=True):
     # start a new wandb run to track this script
     if init_wandb:
